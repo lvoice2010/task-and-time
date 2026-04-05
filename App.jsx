@@ -580,7 +580,7 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
   const plannedMin = tasks.reduce((s, t) => s + (t.estimateMinutes || 0), 0);
   const totalInColumn = allTasks.filter(t => t.column === column.id).length;
   const hiddenCount = totalInColumn - tasks.length;
-  const showPlanned = column.id === 'today' || column.id === 'week';
+  const showPlanned = column.id !== 'done';
 
   return (
     <div
