@@ -1047,7 +1047,7 @@ function ReportsView({ tasks }) {
     return map;
   }, [tasksWithTime]);
 
-  // count working days (Mon-Fri) in period
+  // count working days (Mon-Fri excluding Russian holidays) in period
   const workdaysInPeriod = (() => {
     if (to <= from) return 0;
     let count = 0;
@@ -1055,7 +1055,10 @@ function ReportsView({ tasks }) {
     const end = new Date(to); end.setHours(0, 0, 0, 0);
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dow = d.getDay();
-      if (dow !== 0 && dow !== 6) count++;
+      if (dow === 0 || dow === 6) continue;
+      const iso = toISODate(d);
+      if (RU_HOLIDAYS.has(iso)) continue;
+      count++;
     }
     return Math.max(1, count);
   })();
@@ -1220,6 +1223,28 @@ const todayISO = () => toISODate(new Date());
 const dayOfWeek = (iso) => parseISODate(iso).getDay(); // 0=вс, 6=сб
 const isWeekendDay = (iso) => { const d = dayOfWeek(iso); return d === 0 || d === 6; };
 
+// Российские нерабочие праздничные дни 2026 года (без суббот/воскресений — они учтены отдельно)
+const RU_HOLIDAYS = new Set([
+  // Новогодние каникулы (1-8 января, но 3-4 - сб-вс)
+  '2026-01-01','2026-01-02','2026-01-05','2026-01-06','2026-01-07','2026-01-08',
+  // День защитника Отечества
+  '2026-02-23',
+  // Международный женский день (8 марта — вс, перенос на 9)
+  '2026-03-09',
+  // Праздник весны и труда
+  '2026-05-01',
+  // День Победы (9 мая — сб, перенос на 11)
+  '2026-05-11',
+  // День России
+  '2026-06-12',
+  // День народного единства
+  '2026-11-04',
+  // Праздники 2027 на всякий случай
+  '2027-01-01','2027-01-04','2027-01-05','2027-01-06','2027-01-07','2027-01-08',
+]);
+const isHoliday = (iso) => RU_HOLIDAYS.has(iso);
+const isNonWorkingDay = (iso) => isWeekendDay(iso) || isHoliday(iso);
+
 const MONTH_NAMES_RU = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
 const fmtDayShort = (iso) => {
   const d = parseISODate(iso);
@@ -1349,12 +1374,12 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
         const dayIdx = weekStart + i;
         if (dayIdx >= TOTAL_DAYS) break;
         const iso = days[dayIdx];
-        const weekend = isWeekendDay(iso);
+        const nonWork = isNonWorkingDay(iso);
         const isPast = iso <= today;
         if (!isPast) continue;
         plan.goals.forEach(goal => {
           goal.tactics.forEach(t => {
-            if (t.frequency === 'weekday' && weekend) return;
+            if (t.frequency === 'weekday' && nonWork) return;
             expected += 1;
             const eff = getEffectiveCell(t, iso, tasks);
             if (eff.value === true) completed += 1;
@@ -1407,16 +1432,17 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
               {days.map((iso, i) => {
                 const d = parseISODate(iso);
                 const isToday = iso === today;
-                const weekend = isWeekendDay(iso);
+                const nonWork = isNonWorkingDay(iso);
                 const weekStart = i % 7 === 0;
                 return (
                   <th key={iso}
+                    title={isHoliday(iso) ? 'Праздничный день' : undefined}
                     style={{
                       minWidth: cellSize, width: cellSize, height: 36, padding: 0,
                       borderBottom: '1px solid rgba(15,23,42,0.1)',
                       borderLeft: weekStart ? '2px solid rgba(15,23,42,0.15)' : '1px solid rgba(15,23,42,0.04)',
-                      background: isToday ? '#FEF3C7' : (weekend ? '#E2E8F0' : '#F8FAFC'),
-                      fontSize: 9, fontWeight: 500, color: isToday ? '#92400E' : '#64748B',
+                      background: isToday ? '#FEF3C7' : (nonWork ? '#E2E8F0' : '#F8FAFC'),
+                      fontSize: 9, fontWeight: 500, color: isToday ? '#92400E' : (isHoliday(iso) ? '#DC2626' : '#64748B'),
                       lineHeight: 1.1
                     }}
                     title={fmtDayShort(iso)}
@@ -1447,12 +1473,12 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                   </span>
                 </td>
                 {days.map((iso, i) => {
-                  const weekend = isWeekendDay(iso);
+                  const nonWork = isNonWorkingDay(iso);
                   const isToday = iso === today;
                   const isFuture = iso > today;
                   const weekStart = i % 7 === 0;
                   const manualVal = tactic.completions[iso];
-                  const blockedWeekend = tactic.frequency === 'weekday' && weekend;
+                  const blockedWeekend = tactic.frequency === 'weekday' && nonWork;
                   const clickable = !isFuture && !blockedWeekend;
                   const eff = isFuture ? { value: null, isAuto: false } : getEffectiveCell(tactic, iso, tasks);
 
@@ -1461,7 +1487,7 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                   let color = '#0F172A';
                   if (isFuture) bg = '#F1F5F9';
                   else if (blockedWeekend) bg = '#E5E7EB';
-                  else if (weekend) bg = '#F8FAFC';
+                  else if (nonWork) bg = '#F8FAFC';
 
                   if (manualVal === true) { content = '✔'; color = '#059669'; bg = '#D1FAE5'; }
                   else if (manualVal === false) { content = '✖'; color = '#DC2626'; bg = '#FEE2E2'; }
