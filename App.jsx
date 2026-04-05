@@ -885,18 +885,39 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
         companyFilter={companyFilter} setCompanyFilter={setCompanyFilter}
       />
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12 }}>
-        {COLUMNS.map(col => (
-          <KanbanColumn
-            key={col.id} column={col} now={now}
-            tasks={filtered.filter(t => t.column === col.id)}
-            allTasks={tasks}
-            activeId={activeId}
-            onDrop={handleDrop}
-            onDragStart={onDragStart}
-            onTaskAction={handleTaskAction}
-            onAddTask={addTaskToColumn}
-            onOpenTask={setOpenTaskId}
-          />
+        {COLUMNS.map((col, i) => (
+          <React.Fragment key={col.id}>
+            {col.id === 'urgent' && (
+              <div style={{
+                flexShrink: 0, width: 2, margin: '0 8px', alignSelf: 'stretch',
+                background: 'rgba(15,23,42,0.12)', borderRadius: 1,
+                position: 'relative'
+              }}>
+                <div style={{
+                  position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(90deg)',
+                  whiteSpace: 'nowrap', fontSize: 9, fontWeight: 600, color: '#64748B',
+                  letterSpacing: '0.1em', background: '#E2E8F0', padding: '2px 8px', borderRadius: 3
+                }}>МАТРИЦА ХРАНЕНИЯ</div>
+              </div>
+            )}
+            {col.id === 'done' && (
+              <div style={{
+                flexShrink: 0, width: 2, margin: '0 8px', alignSelf: 'stretch',
+                background: 'rgba(15,23,42,0.12)', borderRadius: 1
+              }} />
+            )}
+            <KanbanColumn
+              column={col} now={now}
+              tasks={filtered.filter(t => t.column === col.id)}
+              allTasks={tasks}
+              activeId={activeId}
+              onDrop={handleDrop}
+              onDragStart={onDragStart}
+              onTaskAction={handleTaskAction}
+              onAddTask={addTaskToColumn}
+              onOpenTask={setOpenTaskId}
+            />
+          </React.Fragment>
         ))}
       </div>
       {openTaskId && tasks.find(t => t.id === openTaskId) && (
