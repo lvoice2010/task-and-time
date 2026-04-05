@@ -1178,26 +1178,6 @@ function ReportsView({ tasks }) {
         </div>
       </div>
 
-      {/* top tasks */}
-      <div style={S.card}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 14, letterSpacing: '0.02em' }}>ТОП ЗАДАЧ ПО ВРЕМЕНИ (до 15)</div>
-        {topTasks.length === 0 && <div style={{ fontSize: 12, color: '#64748B' }}>Нет данных за период.</div>}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {topTasks.map((t, i) => {
-            const dept = getDept(t.dept);
-            const company = getCompany(t.company);
-            return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < topTasks.length - 1 ? '1px solid rgba(15,23,42,0.05)' : 'none' }}>
-                <span className="mono" style={{ fontSize: 11, color: '#94A3B8', minWidth: 22, fontWeight: 500 }}>{String(i + 1).padStart(2, '0')}</span>
-                <span style={{ fontSize: 13, color: '#0F172A', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-                {dept && <span style={S.badge(dept.color)}>{dept.name}</span>}
-                {company && <span style={S.badge(company.color)}>{company.short}</span>}
-                <span className="mono" style={{ fontSize: 12, color: '#0284C7', fontWeight: 600, minWidth: 55, textAlign: 'right' }}>{fmtHours(t.rangeTime)} ч</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
