@@ -527,10 +527,22 @@ function FilterBar({ deptFilter, setDeptFilter, companyFilter, setCompanyFilter 
 }
 
 function SummaryBar({ tasks, activeTask, now }) {
+  // Monday-based current week
+  const weekStart = (() => {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay(); // 0=Sun
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d.getTime();
+  })();
+
   const total = tasks.length;
-  const done = tasks.filter(t => t.column === 'done').length;
-  const totalTime = tasks.reduce((s, t) => s + taskTotal(t, now), 0);
-  const doneTime = tasks.filter(t => t.column === 'done').reduce((s, t) => s + taskTotal(t, now), 0);
+  const doneThisWeek = tasks.filter(t => t.completedAt && t.completedAt >= weekStart && t.completedAt <= now).length;
+  const timeThisWeek = tasks.reduce((s, t) => s + taskTotalInRange(t, weekStart, now), 0);
+  const doneTimeThisWeek = tasks
+    .filter(t => t.completedAt && t.completedAt >= weekStart && t.completedAt <= now)
+    .reduce((s, t) => s + taskTotalInRange(t, weekStart, now), 0);
 
   const item = (label, value, color) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -541,10 +553,16 @@ function SummaryBar({ tasks, activeTask, now }) {
 
   return (
     <div style={{ ...S.card, marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-      {item('ЗАДАЧ', total)}
-      {item('СДЕЛАНО', done, '#059669')}
-      {item('ВРЕМЯ', fmtDuration(totalTime))}
-      {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTime), '#059669')}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 16, borderRight: '1px solid rgba(15,23,42,0.08)' }}>
+        <div style={{ fontSize: 9, color: '#94A3B8', fontWeight: 600, letterSpacing: '0.08em' }}>ЗА ТЕКУЩУЮ НЕДЕЛЮ</div>
+        <div className="mono" style={{ fontSize: 11, color: '#475569', fontWeight: 500 }}>
+          {new Date(weekStart).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })} — сегодня
+        </div>
+      </div>
+      {item('ЗАДАЧ ВСЕГО', total)}
+      {item('СДЕЛАНО', doneThisWeek, '#059669')}
+      {item('ВРЕМЯ', fmtDuration(timeThisWeek))}
+      {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTimeThisWeek), '#059669')}
       {activeTask && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: '#D1FAE5', borderRadius: 6, border: '1px solid #A7F3D0' }}>
           <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669' }} />
