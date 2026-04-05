@@ -784,7 +784,21 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
   const handleDrop = (columnId) => {
     const id = draggedId.current;
     if (!id) return;
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, column: columnId } : t));
+    const nowTs = Date.now();
+    setTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      // moved to Done: set completedAt, close active session
+      if (columnId === 'done' && t.column !== 'done') {
+        const sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
+        return { ...t, column: columnId, sessions, completedAt: t.completedAt || nowTs };
+      }
+      // moved OUT of Done: clear completedAt
+      if (columnId !== 'done' && t.column === 'done') {
+        return { ...t, column: columnId, completedAt: null };
+      }
+      return { ...t, column: columnId };
+    }));
+    if (columnId === 'done' && activeId === id) setActiveId(null);
     draggedId.current = null;
   };
 
