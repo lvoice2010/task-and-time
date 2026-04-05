@@ -180,8 +180,13 @@ function TaskCard({ task, isActive, onStart, onPause, onOpen, onDragStart, now }
       </div>
 
       {/* timer display */}
-      <div className="mono" style={{ fontSize: 13, color: isActive ? '#059669' : '#64748B', marginBottom: 10, fontWeight: 500 }}>
-        {fmtDuration(total)}
+      <div className="mono" style={{ fontSize: 13, marginBottom: 10, fontWeight: 500, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ color: isActive ? '#059669' : '#64748B' }}>{fmtDuration(total)}</span>
+        {task.estimateMinutes ? (
+          <span style={{ color: '#475569', fontSize: 11 }} title="Запланировано">
+            / 📋 {fmtDuration(task.estimateMinutes * 60000)}
+          </span>
+        ) : null}
       </div>
 
       {/* buttons */}
