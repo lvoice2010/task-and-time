@@ -151,7 +151,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function TaskCard({ task, isActive, onStart, onPause, onDelete, onOpen, onDragStart, now }) {
+function TaskCard({ task, isActive, onStart, onPause, onOpen, onDragStart, now }) {
   const status = taskStatus(task);
   const total = taskTotal(task, now);
   const dept = getDept(task.dept);
@@ -199,8 +199,6 @@ function TaskCard({ task, isActive, onStart, onPause, onDelete, onOpen, onDragSt
             style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#D1FAE5', color: '#059669', border: '1px solid #A7F3D0' }}
           >▶ {status === 'paused' ? 'Прод.' : 'Старт'}</button>
         )}
-        <button className="btn-hover" onClick={onDelete} title="Удалить"
-          style={{ padding: '4px 8px', fontSize: 12, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF', marginLeft: 'auto' }}>×</button>
       </div>
 
       <div className="mono" style={{ fontSize: 10, color: '#94A3B8', marginTop: 8 }}>
@@ -267,7 +265,7 @@ function FileAttach({ files, onChange }) {
   );
 }
 
-function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
+function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
   const [estHours, setEstHours] = useState(task.estimateMinutes ? String(Math.floor(task.estimateMinutes / 60)) : '');
@@ -447,6 +445,10 @@ function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
           <button onClick={onClose} className="btn-hover"
             style={{ padding: '9px 18px', fontSize: 13, fontWeight: 500, borderRadius: 6, color: '#64748B', border: '1px solid rgba(15,23,42,0.12)', marginLeft: 'auto' }}>
             Отмена
+          </button>
+          <button onClick={() => { if (window.confirm('Удалить задачу?')) { onDelete(); onClose(); } }} className="btn-hover"
+            style={{ padding: '9px 18px', fontSize: 13, fontWeight: 500, borderRadius: 6, color: '#DC2626', border: '1px solid rgba(220,38,38,0.3)', background: '#FFFFFF' }}>
+            Удалить
           </button>
         </div>
       </div>
@@ -630,7 +632,6 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
             onDragStart={onDragStart}
             onStart={() => onTaskAction('start', t.id)}
             onPause={() => onTaskAction('pause', t.id)}
-            onDelete={() => onTaskAction('delete', t.id)}
             onOpen={() => onOpenTask(t.id)}
           />
         ))}
@@ -841,6 +842,7 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
           onClose={() => setOpenTaskId(null)}
           onUpdate={(patch) => updateTask(openTaskId, patch)}
           onComplete={() => { completeTask(openTaskId); setOpenTaskId(null); }}
+          onDelete={() => handleTaskAction('delete', openTaskId)}
         />
       )}
     </div>
