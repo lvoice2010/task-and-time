@@ -16,6 +16,7 @@ const DEPTS = [
   { id: 'sales',     name: 'Продажи',     color: '#A855F7' },
   { id: 'marketing', name: 'Маркетинг',   color: '#CA8A04' },
   { id: 'ops',       name: 'Операционка', color: '#92400E' },
+  { id: 'personal',  name: 'Личное',      color: '#0EA5E9' },
 ];
 
 const COMPANIES = [
@@ -24,7 +25,7 @@ const COMPANIES = [
   { id: 'pf', name: 'ПФ',         short: 'ПФ', color: '#059669' },
 ];
 
-const DEPT_IDS = ['sales', 'marketing', 'ops'];
+const DEPT_IDS = ['sales', 'marketing', 'ops', 'personal'];
 const COMPANY_IDS = ['kg', 'kc', 'pf'];
 
 const getDept = (id) => DEPTS.find(d => d.id === id);
@@ -817,7 +818,7 @@ function ReportsView({ tasks }) {
   const totalTime = tasksWithTime.reduce((s, t) => s + t.rangeTime, 0);
 
   const byDept = useMemo(() => {
-    const map = { sales: 0, marketing: 0, ops: 0, none: 0 };
+    const map = { sales: 0, marketing: 0, ops: 0, personal: 0, none: 0 };
     tasksWithTime.forEach(t => { map[t.dept || 'none'] += t.rangeTime; });
     return map;
   }, [tasksWithTime]);
