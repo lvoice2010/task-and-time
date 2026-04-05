@@ -20,13 +20,14 @@ const DEPTS = [
 ];
 
 const COMPANIES = [
-  { id: 'kg', name: 'КиберГусли', short: 'КГ', color: '#2563EB' },
-  { id: 'kc', name: 'КЦ',         short: 'КЦ', color: '#DC2626' },
-  { id: 'pf', name: 'ПФ',         short: 'ПФ', color: '#059669' },
+  { id: 'kg',       name: 'КиберГусли', short: 'КГ',   color: '#2563EB' },
+  { id: 'kc',       name: 'КЦ',         short: 'КЦ',   color: '#DC2626' },
+  { id: 'pf',       name: 'ПФ',         short: 'ПФ',   color: '#059669' },
+  { id: 'personal', name: 'Личное',     short: 'Личн', color: '#DB2777' },
 ];
 
 const DEPT_IDS = ['sales', 'marketing', 'ops', 'personal'];
-const COMPANY_IDS = ['kg', 'kc', 'pf'];
+const COMPANY_IDS = ['kg', 'kc', 'pf', 'personal'];
 
 const getDept = (id) => DEPTS.find(d => d.id === id);
 const getCompany = (id) => COMPANIES.find(c => c.id === id);
@@ -916,7 +917,7 @@ function ReportsView({ tasks }) {
   }, [tasksWithTime]);
 
   const byCompany = useMemo(() => {
-    const map = { kg: 0, kc: 0, pf: 0, none: 0 };
+    const map = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0 };
     tasksWithTime.forEach(t => { map[t.company || 'none'] += t.rangeTime; });
     return map;
   }, [tasksWithTime]);
@@ -935,15 +936,15 @@ function ReportsView({ tasks }) {
   // Cross table dept x company
   const cross = useMemo(() => {
     const matrix = {};
-    DEPTS.forEach(d => { matrix[d.id] = { kg: 0, kc: 0, pf: 0, none: 0, total: 0 }; });
-    matrix['none'] = { kg: 0, kc: 0, pf: 0, none: 0, total: 0 };
+    DEPTS.forEach(d => { matrix[d.id] = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0, total: 0 }; });
+    matrix['none'] = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0, total: 0 };
     tasksWithTime.forEach(t => {
       const dk = t.dept || 'none';
       const ck = t.company || 'none';
       matrix[dk][ck] += t.rangeTime;
       matrix[dk].total += t.rangeTime;
     });
-    const colTotals = { kg: 0, kc: 0, pf: 0, none: 0, total: 0 };
+    const colTotals = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0, total: 0 };
     Object.values(matrix).forEach(row => {
       colTotals.kg += row.kg; colTotals.kc += row.kc; colTotals.pf += row.pf;
       colTotals.none += row.none; colTotals.total += row.total;
@@ -1021,9 +1022,9 @@ function ReportsView({ tasks }) {
                 return (
                   <tr key={d.id}>
                     <td style={{ padding: '8px 12px', color: d.color, fontWeight: 500, borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{d.name}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.kg)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.kc)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.pf)}</td>
+                    {COMPANIES.map(c => (
+                      <td key={c.id} style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row[c.id])}</td>
+                    ))}
                     <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.none)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.total)}</td>
                   </tr>
@@ -1031,9 +1032,9 @@ function ReportsView({ tasks }) {
               })}
               <tr>
                 <td style={{ padding: '8px 12px', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>Σ</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.kg)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.kc)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.pf)}</td>
+                {COMPANIES.map(c => (
+                  <td key={c.id} style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals[c.id])}</td>
+                ))}
                 <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.none)}</td>
                 <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0284C7', fontWeight: 700, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.total)}</td>
               </tr>
