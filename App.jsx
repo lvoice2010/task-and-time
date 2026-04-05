@@ -1036,13 +1036,24 @@ function ReportsView({ tasks }) {
     return map;
   }, [tasksWithTime]);
 
-  const daysInPeriod = Math.max(1, Math.ceil((to - from) / 86400000));
-  const DEPT_TARGETS = { sales: 2, marketing: 1 }; // hours per day
+  // count working days (Mon-Fri) in period
+  const workdaysInPeriod = (() => {
+    if (to <= from) return 0;
+    let count = 0;
+    const start = new Date(from); start.setHours(0, 0, 0, 0);
+    const end = new Date(to); end.setHours(0, 0, 0, 0);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) count++;
+    }
+    return Math.max(1, count);
+  })();
+  const DEPT_TARGETS = { sales: 2, marketing: 1 }; // hours per working day
   const deptRows = [
     ...DEPTS.map(d => {
       const perDay = DEPT_TARGETS[d.id];
-      const target = perDay ? perDay * daysInPeriod * 3600000 : null;
-      const targetHint = perDay ? `план: ${perDay}ч/день × ${daysInPeriod} дн.` : null;
+      const target = perDay ? perDay * workdaysInPeriod * 3600000 : null;
+      const targetHint = perDay ? `план: ${perDay}ч/раб.день × ${workdaysInPeriod} раб.дн.` : null;
       return { key: d.id, label: d.name, color: d.color, value: byDept[d.id], target, targetHint };
     }),
     { key: 'none', label: 'Без отдела', color: '#64748B', value: byDept.none },
