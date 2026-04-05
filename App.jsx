@@ -687,26 +687,8 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 40, maxHeight: 'calc(100vh - 360px)', overflowY: 'auto', paddingRight: 4 }}>
-        {tasks.length === 0 && hiddenCount === 0 && (
-          <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>— пусто —</div>
-        )}
-        {tasks.length === 0 && hiddenCount > 0 && (
-          <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>{hiddenCount} скрыто</div>
-        )}
-        {tasks.map(t => (
-          <TaskCard
-            key={t.id} task={t} now={now} isActive={activeId === t.id}
-            onDragStart={onDragStart}
-            onStart={() => onTaskAction('start', t.id)}
-            onPause={() => onTaskAction('pause', t.id)}
-            onOpen={() => onOpenTask(t.id)}
-          />
-        ))}
-      </div>
-
       {adding ? (
-        <div style={{ marginTop: 6, padding: 10, background: '#FFFFFF', borderRadius: 8, border: '1px solid rgba(15,23,42,0.1)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ marginBottom: 8, padding: 10, background: '#FFFFFF', borderRadius: 8, border: '1px solid rgba(15,23,42,0.1)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <input
             autoFocus value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
@@ -764,13 +746,31 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
           className="btn-hover"
           onClick={() => setAdding(true)}
           style={{
-            marginTop: 4, padding: '8px 10px', fontSize: 12, fontWeight: 500,
+            marginBottom: 8, padding: '8px 10px', fontSize: 12, fontWeight: 500,
             color: '#64748B', textAlign: 'left', borderRadius: 6,
             border: '1px dashed rgba(15,23,42,0.15)', background: 'transparent',
             width: '100%'
           }}
         >+ Создать задачу</button>
       )}
+
+      <div style={{ flex: 1, minHeight: 40, maxHeight: 'calc(100vh - 360px)', overflowY: 'auto', paddingRight: 4 }}>
+        {tasks.length === 0 && hiddenCount === 0 && (
+          <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>— пусто —</div>
+        )}
+        {tasks.length === 0 && hiddenCount > 0 && (
+          <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>{hiddenCount} скрыто</div>
+        )}
+        {tasks.map(t => (
+          <TaskCard
+            key={t.id} task={t} now={now} isActive={activeId === t.id}
+            onDragStart={onDragStart}
+            onStart={() => onTaskAction('start', t.id)}
+            onPause={() => onTaskAction('pause', t.id)}
+            onOpen={() => onOpenTask(t.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
