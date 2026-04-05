@@ -1392,7 +1392,7 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
   return (
     <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
-        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed' }}>
+        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed', width: 34 + 220 + 240 + cellSize * TOTAL_DAYS }}>
           <colgroup>
             <col style={{ width: 34 }} />
             <col style={{ width: 220 }} />
