@@ -1141,48 +1141,6 @@ function ReportsView({ tasks }) {
         <BarChart title="ПО КОМПАНИЯМ" rows={companyRows} maxVal={maxVal} />
       </div>
 
-      {/* goals vs actual */}
-      {(() => {
-        const days = Math.max(1, Math.ceil((to - from) / 86400000));
-        const goalRows = [
-          { key: 'sales', label: 'Продажи', perDay: 2, color: '#A855F7', actual: byDept.sales / 3600000 },
-          { key: 'marketing', label: 'Маркетинг', perDay: 1, color: '#CA8A04', actual: byDept.marketing / 3600000 },
-        ];
-        return (
-          <div style={S.card}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4, letterSpacing: '0.02em' }}>ЦЕЛИ ПО ВРЕМЕНИ</div>
-            <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 14 }}>
-              План: мин 2ч/день на Продажи, мин 1ч/день на Маркетинг · {days} {days === 1 ? 'день' : (days < 5 ? 'дня' : 'дней')} в периоде
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {goalRows.map(g => {
-                const target = g.perDay * days;
-                const pct = target > 0 ? Math.min(200, (g.actual / target) * 100) : 0;
-                const reached = pct >= 100;
-                const barColor = reached ? '#059669' : (pct >= 75 ? '#CA8A04' : '#DC2626');
-                return (
-                  <div key={g.key}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, color: g.color, fontWeight: 600 }}>{g.label}</span>
-                      <span className="mono" style={{ fontSize: 12, color: barColor, fontWeight: 600 }}>
-                        {g.actual.toFixed(1)}ч / {target.toFixed(0)}ч · {pct.toFixed(0)}%
-                        {reached && ' ✓'}
-                      </span>
-                    </div>
-                    <div style={{ height: 8, background: '#F1F5F9', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
-                      <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: barColor, borderRadius: 4, transition: 'width 0.3s' }} />
-                      {pct > 100 && (
-                        <div style={{ position: 'absolute', top: 0, left: '100%', transform: 'translateX(-100%)', width: `${Math.min(50, pct - 100)}%`, height: '100%', background: '#059669', opacity: 0.4 }} />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
       {/* cross table */}
       <div style={S.card}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 14, letterSpacing: '0.02em' }}>НАПРАВЛЕНИЕ × КОМПАНИЯ (ч)</div>
