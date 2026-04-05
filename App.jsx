@@ -729,7 +729,6 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
   return (
     <div>
       <SummaryBar tasks={tasks} activeTask={activeTask} now={now} />
-      <AddTaskForm onAdd={addTask} />
       <FilterBar
         deptFilter={deptFilter} setDeptFilter={setDeptFilter}
         companyFilter={companyFilter} setCompanyFilter={setCompanyFilter}
