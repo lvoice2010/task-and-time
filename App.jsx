@@ -973,6 +973,591 @@ function ReportsView({ tasks }) {
   );
 }
 
+// ===== 12 недель =====
+
+const WEEKPLAN_STORAGE_KEY = 'weekplan-v1';
+const TOTAL_DAYS = 84;
+const TOTAL_WEEKS = 12;
+
+// date utils
+const toISODate = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const parseISODate = (s) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const addDaysISO = (iso, days) => {
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+};
+const todayISO = () => toISODate(new Date());
+const dayOfWeek = (iso) => parseISODate(iso).getDay(); // 0=вс, 6=сб
+const isWeekendDay = (iso) => { const d = dayOfWeek(iso); return d === 0 || d === 6; };
+
+const MONTH_NAMES_RU = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+const fmtDayShort = (iso) => {
+  const d = parseISODate(iso);
+  return `${d.getDate()} ${MONTH_NAMES_RU[d.getMonth()]}`;
+};
+
+const extractNumber = (s) => {
+  if (!s) return null;
+  const m = String(s).replace(/\s+/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+};
+
+const computeProgress = (start, target, current) => {
+  const a = extractNumber(start);
+  const b = extractNumber(target);
+  const c = extractNumber(current);
+  if (a == null || b == null || c == null) return null;
+  if (a === b) return c >= b ? 100 : 0;
+  const pct = ((c - a) / (b - a)) * 100;
+  return Math.max(0, Math.min(100, pct));
+};
+
+function ProgressBar({ value, color = '#0284C7' }) {
+  return (
+    <div style={{ height: 8, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
+      <div style={{ width: `${value}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.3s' }} />
+    </div>
+  );
+}
+
+function GoalCard({ goal, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(goal.currentValue || '');
+  const pct = computeProgress(goal.startValue, goal.targetValue, goal.currentValue);
+  const company = getCompany(goal.company);
+  const progressColor = pct != null && pct >= 85 ? '#059669' : pct != null && pct >= 50 ? '#0284C7' : '#CA8A04';
+
+  const save = () => { onUpdate({ currentValue: val }); setEditing(false); };
+
+  return (
+    <div style={{ ...S.card, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span className="mono" style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>#{goal.number}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', flex: 1, minWidth: 200 }}>{goal.title || 'Без названия'}</span>
+        {company && <span style={S.badge(company.color)}>{company.short}</span>}
+      </div>
+      <div className="mono" style={{ fontSize: 12, color: '#475569', marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span>Старт: <b style={{ color: '#0F172A' }}>{goal.startValue || '—'}</b></span>
+        <span style={{ color: '#94A3B8' }}>→</span>
+        <span>Цель: <b style={{ color: '#0F172A' }}>{goal.targetValue || '—'}</b></span>
+        <span style={{ color: '#94A3B8' }}>→</span>
+        <span>Сейчас: <b style={{ color: progressColor }}>{goal.currentValue || '—'}</b></span>
+      </div>
+      {pct != null && (
+        <div style={{ marginBottom: 8 }}>
+          <ProgressBar value={pct} color={progressColor} />
+          <div className="mono" style={{ fontSize: 11, color: progressColor, fontWeight: 600, marginTop: 4, textAlign: 'right' }}>{pct.toFixed(1)}%</div>
+        </div>
+      )}
+      {editing ? (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input autoFocus value={val} onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+            placeholder="Новое текущее значение"
+            style={{ ...S.input, padding: '6px 10px', fontSize: 13 }} />
+          <button onClick={save} className="btn-hover"
+            style={{ padding: '6px 12px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#0284C7', color: '#FFFFFF' }}>Сохранить</button>
+          <button onClick={() => setEditing(false)} className="btn-hover"
+            style={{ padding: '6px 10px', fontSize: 11, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.12)' }}>×</button>
+        </div>
+      ) : (
+        <button onClick={() => { setVal(goal.currentValue || ''); setEditing(true); }} className="btn-hover"
+          style={{ padding: '5px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>Обновить</button>
+      )}
+    </div>
+  );
+}
+
+function TrackingTable({ plan, onToggleCell }) {
+  const today = todayISO();
+  const days = useMemo(() => {
+    const arr = [];
+    for (let i = 0; i < TOTAL_DAYS; i++) arr.push(addDaysISO(plan.startDate, i));
+    return arr;
+  }, [plan.startDate]);
+
+  const cellSize = 28;
+
+  const cycleCell = (current) => {
+    if (current === true) return false; // ✓ → ✗
+    if (current === false) return null; // ✗ → empty
+    return true; // empty → ✓
+  };
+
+  const weekTotals = useMemo(() => {
+    const totals = [];
+    for (let w = 0; w < TOTAL_WEEKS; w++) {
+      let completed = 0, expected = 0;
+      const weekStart = w * 7;
+      for (let i = 0; i < 7; i++) {
+        const dayIdx = weekStart + i;
+        if (dayIdx >= TOTAL_DAYS) break;
+        const iso = days[dayIdx];
+        const weekend = isWeekendDay(iso);
+        const isPast = iso <= today;
+        if (!isPast) continue;
+        plan.goals.forEach(goal => {
+          goal.tactics.forEach(t => {
+            if (t.frequency === 'weekday' && weekend) return;
+            expected += 1;
+            if (t.completions[iso] === true) completed += 1;
+          });
+        });
+      }
+      const pct = expected > 0 ? (completed / expected) * 100 : null;
+      totals.push({ completed, expected, pct });
+    }
+    return totals;
+  }, [plan, days, today]);
+
+  const weekColor = (pct) => {
+    if (pct == null) return '#94A3B8';
+    if (pct >= 85) return '#059669';
+    if (pct >= 60) return '#CA8A04';
+    return '#DC2626';
+  };
+
+  const stickyBg = '#F1F5F9';
+  const stickyStyle = { background: stickyBg, position: 'sticky', zIndex: 2 };
+
+  const renderGoalRows = () => {
+    const rows = [];
+    plan.goals.forEach(goal => {
+      if (goal.tactics.length === 0) return;
+      goal.tactics.forEach((t, tIdx) => {
+        rows.push({ goal, tactic: t, isFirst: tIdx === 0, tacticCount: goal.tactics.length });
+      });
+    });
+    return rows;
+  };
+  const rows = renderGoalRows();
+
+  return (
+    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11 }}>
+          <thead>
+            <tr>
+              <th style={{ ...stickyStyle, left: 0, width: 30, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B' }}>№</th>
+              <th style={{ ...stickyStyle, left: 30, width: 180, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Цель</th>
+              <th style={{ ...stickyStyle, left: 210, width: 150, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Тактика</th>
+              {days.map((iso, i) => {
+                const d = parseISODate(iso);
+                const isToday = iso === today;
+                const weekend = isWeekendDay(iso);
+                const weekStart = i % 7 === 0;
+                return (
+                  <th key={iso}
+                    style={{
+                      minWidth: cellSize, width: cellSize, height: 36, padding: 0,
+                      borderBottom: '1px solid rgba(15,23,42,0.1)',
+                      borderLeft: weekStart ? '2px solid rgba(15,23,42,0.15)' : '1px solid rgba(15,23,42,0.04)',
+                      background: isToday ? '#FEF3C7' : (weekend ? '#E2E8F0' : '#F8FAFC'),
+                      fontSize: 9, fontWeight: 500, color: isToday ? '#92400E' : '#64748B',
+                      lineHeight: 1.1
+                    }}
+                    title={fmtDayShort(iso)}
+                  >
+                    <div style={{ fontSize: 8, color: '#94A3B8' }}>{MONTH_NAMES_RU[d.getMonth()]}</div>
+                    <div style={{ fontWeight: 600, color: isToday ? '#92400E' : '#334155' }}>{d.getDate()}</div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ goal, tactic, isFirst, tacticCount }, rIdx) => (
+              <tr key={`${goal.id}-${tactic.id}`}>
+                <td style={{ ...stickyStyle, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', textAlign: 'center', fontWeight: 600, color: '#64748B' }}>
+                  {isFirst ? goal.number : ''}
+                </td>
+                <td style={{ ...stickyStyle, left: 30, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', color: '#0F172A', fontWeight: isFirst ? 600 : 400, fontSize: 11, fontFamily: 'DM Sans' }}>
+                  {isFirst ? goal.title : ''}
+                </td>
+                <td style={{ ...stickyStyle, left: 210, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', color: '#334155', fontSize: 11, fontFamily: 'DM Sans' }}>
+                  {tactic.title}
+                  <span style={{ fontSize: 9, color: '#94A3B8', marginLeft: 4 }}>
+                    {tactic.frequency === 'weekday' ? '(5/7)' : '(7/7)'}
+                  </span>
+                </td>
+                {days.map((iso, i) => {
+                  const weekend = isWeekendDay(iso);
+                  const isToday = iso === today;
+                  const isFuture = iso > today;
+                  const weekStart = i % 7 === 0;
+                  const val = tactic.completions[iso];
+                  const blockedWeekend = tactic.frequency === 'weekday' && weekend;
+                  const clickable = !isFuture && !blockedWeekend;
+
+                  let bg = '#FFFFFF';
+                  let content = '';
+                  let color = '#0F172A';
+                  if (isFuture) bg = '#F1F5F9';
+                  else if (blockedWeekend) bg = '#E5E7EB';
+                  else if (weekend) bg = '#F8FAFC';
+
+                  if (val === true) { content = '✓'; color = '#059669'; bg = '#D1FAE5'; }
+                  else if (val === false) { content = '✗'; color = '#DC2626'; bg = '#FEE2E2'; }
+
+                  const border = isToday ? '2px solid #F59E0B' : (weekStart ? '2px solid rgba(15,23,42,0.15)' : '1px solid rgba(15,23,42,0.04)');
+
+                  return (
+                    <td key={iso}
+                      onClick={clickable ? () => onToggleCell(goal.id, tactic.id, iso, cycleCell(val)) : undefined}
+                      style={{
+                        width: cellSize, height: cellSize, padding: 0, textAlign: 'center',
+                        borderBottom: '1px solid rgba(15,23,42,0.04)',
+                        borderLeft: border,
+                        background: bg, color, fontWeight: 700, fontSize: 13,
+                        cursor: clickable ? 'pointer' : 'default',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {content}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {/* Week totals row */}
+            <tr>
+              <td colSpan={3} style={{ ...stickyStyle, left: 0, padding: '8px 6px', borderTop: '2px solid rgba(15,23,42,0.1)', color: '#64748B', fontWeight: 600, textAlign: 'right', fontSize: 10, fontFamily: 'DM Sans' }}>
+                ИТОГО ПО НЕДЕЛЕ
+              </td>
+              {weekTotals.map((wt, w) => (
+                <td key={w} colSpan={7} style={{
+                  borderTop: '2px solid rgba(15,23,42,0.1)',
+                  borderLeft: '2px solid rgba(15,23,42,0.15)',
+                  padding: '8px 4px', textAlign: 'center',
+                  background: wt.pct != null ? `${weekColor(wt.pct)}18` : '#F8FAFC',
+                  color: weekColor(wt.pct), fontWeight: 700, fontSize: 11
+                }}>
+                  {wt.pct != null ? `${wt.pct.toFixed(0)}%` : '—'}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PlanSettings({ plan, onSave, onCancel, onDelete }) {
+  const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(plan)));
+
+  const updatePlan = (patch) => setDraft(p => ({ ...p, ...patch }));
+  const updateGoal = (gid, patch) => setDraft(p => ({
+    ...p, goals: p.goals.map(g => g.id === gid ? { ...g, ...patch } : g)
+  }));
+  const addGoal = () => setDraft(p => ({
+    ...p, goals: [...p.goals, {
+      id: newId(), number: p.goals.length + 1, title: '', company: null,
+      startValue: '', targetValue: '', currentValue: '', tactics: []
+    }]
+  }));
+  const removeGoal = (gid) => {
+    if (!window.confirm('Удалить цель?')) return;
+    setDraft(p => ({
+      ...p,
+      goals: p.goals.filter(g => g.id !== gid).map((g, i) => ({ ...g, number: i + 1 }))
+    }));
+  };
+  const moveGoal = (gid, dir) => setDraft(p => {
+    const i = p.goals.findIndex(g => g.id === gid);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= p.goals.length) return p;
+    const goals = [...p.goals];
+    [goals[i], goals[j]] = [goals[j], goals[i]];
+    return { ...p, goals: goals.map((g, idx) => ({ ...g, number: idx + 1 })) };
+  });
+  const addTactic = (gid) => updateGoal(gid, {
+    tactics: [...draft.goals.find(g => g.id === gid).tactics, { id: newId(), title: '', frequency: 'daily', completions: {} }]
+  });
+  const updateTactic = (gid, tid, patch) => {
+    const goal = draft.goals.find(g => g.id === gid);
+    updateGoal(gid, { tactics: goal.tactics.map(t => t.id === tid ? { ...t, ...patch } : t) });
+  };
+  const removeTactic = (gid, tid) => {
+    const goal = draft.goals.find(g => g.id === gid);
+    updateGoal(gid, { tactics: goal.tactics.filter(t => t.id !== tid) });
+  };
+
+  // compute endDate whenever startDate changes
+  useEffect(() => {
+    const end = addDaysISO(draft.startDate, TOTAL_DAYS - 1);
+    if (end !== draft.endDate) setDraft(p => ({ ...p, endDate: end }));
+  }, [draft.startDate]);
+
+  const label = (text) => (
+    <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em', marginBottom: 4, textTransform: 'uppercase' }}>{text}</div>
+  );
+
+  return (
+    <div>
+      <div style={{ ...S.card, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 8 }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            {label('Название плана')}
+            <input value={draft.title} onChange={e => updatePlan({ title: e.target.value })}
+              placeholder="12 недель — весна 2026" style={S.input} />
+          </div>
+          <div>
+            {label('Дата начала')}
+            <input type="date" value={draft.startDate}
+              onChange={e => updatePlan({ startDate: e.target.value })}
+              style={{ ...S.input, width: 160 }} />
+          </div>
+          <div>
+            {label('Дата окончания (авто)')}
+            <div className="mono" style={{ fontSize: 13, color: '#475569', padding: '8px 0' }}>
+              {fmtDayShort(draft.endDate)} ({draft.endDate})
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {draft.goals.map((goal, gi) => (
+        <div key={goal.id} style={{ ...S.card, marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <span className="mono" style={{ fontSize: 12, color: '#64748B', fontWeight: 600, minWidth: 24 }}>#{goal.number}</span>
+            <input value={goal.title} onChange={e => updateGoal(goal.id, { title: e.target.value })}
+              placeholder="Название цели (например, Похудение до 59 кг)"
+              style={{ ...S.input, fontSize: 15, fontWeight: 600, flex: 1 }} />
+            <button onClick={() => moveGoal(goal.id, -1)} className="btn-hover" disabled={gi === 0}
+              style={{ padding: '6px 8px', fontSize: 11, color: gi === 0 ? '#CBD5E1' : '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>↑</button>
+            <button onClick={() => moveGoal(goal.id, 1)} className="btn-hover" disabled={gi === draft.goals.length - 1}
+              style={{ padding: '6px 8px', fontSize: 11, color: gi === draft.goals.length - 1 ? '#CBD5E1' : '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>↓</button>
+            <button onClick={() => removeGoal(goal.id)} className="btn-hover"
+              style={{ padding: '6px 10px', fontSize: 11, color: '#DC2626', borderRadius: 5, border: '1px solid rgba(220,38,38,0.3)', background: '#FFFFFF' }}>Удалить</button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
+            <div>
+              {label('Компания')}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <button onClick={() => updateGoal(goal.id, { company: null })} style={S.chip(goal.company === null, '#64748B')}>—</button>
+                {COMPANIES.map(c => (
+                  <button key={c.id} onClick={() => updateGoal(goal.id, { company: goal.company === c.id ? null : c.id })} style={S.chip(goal.company === c.id, c.color)}>{c.short}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              {label('Начальное значение')}
+              <input value={goal.startValue} onChange={e => updateGoal(goal.id, { startValue: e.target.value })}
+                placeholder="67 кг" style={{ ...S.input, padding: '6px 10px', fontSize: 13 }} />
+            </div>
+            <div>
+              {label('Целевое значение')}
+              <input value={goal.targetValue} onChange={e => updateGoal(goal.id, { targetValue: e.target.value })}
+                placeholder="59 кг" style={{ ...S.input, padding: '6px 10px', fontSize: 13 }} />
+            </div>
+            <div>
+              {label('Текущее значение')}
+              <input value={goal.currentValue} onChange={e => updateGoal(goal.id, { currentValue: e.target.value })}
+                placeholder="64 кг" style={{ ...S.input, padding: '6px 10px', fontSize: 13 }} />
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid rgba(15,23,42,0.06)', paddingTop: 10 }}>
+            {label('Тактики')}
+            {goal.tactics.map(t => (
+              <div key={t.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input value={t.title} onChange={e => updateTactic(goal.id, t.id, { title: e.target.value })}
+                  placeholder="Название тактики (например, Зарядка)"
+                  style={{ ...S.input, padding: '6px 10px', fontSize: 13, flex: 1, minWidth: 200 }} />
+                <button onClick={() => updateTactic(goal.id, t.id, { frequency: t.frequency === 'daily' ? 'weekday' : 'daily' })} className="btn-hover"
+                  style={{ padding: '6px 10px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF', fontFamily: 'JetBrains Mono' }}>
+                  {t.frequency === 'daily' ? '7/7 ежедневно' : '5/7 по будням'}
+                </button>
+                <button onClick={() => removeTactic(goal.id, t.id)} className="btn-hover"
+                  style={{ padding: '6px 10px', fontSize: 11, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>×</button>
+              </div>
+            ))}
+            <button onClick={() => addTactic(goal.id)} className="btn-hover"
+              style={{ padding: '6px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px dashed rgba(15,23,42,0.2)', background: '#FFFFFF', marginTop: 4 }}>
+              + Добавить тактику
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <button onClick={addGoal} className="btn-hover"
+        style={{ padding: '8px 14px', fontSize: 12, fontWeight: 500, borderRadius: 6, color: '#475569', border: '1px dashed rgba(15,23,42,0.2)', background: '#FFFFFF', marginBottom: 16 }}>
+        + Добавить цель
+      </button>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => onSave(draft)} className="btn-hover"
+          style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, borderRadius: 6, background: '#0284C7', color: '#FFFFFF' }}>
+          Сохранить план
+        </button>
+        <button onClick={onCancel} className="btn-hover"
+          style={{ padding: '9px 18px', fontSize: 13, fontWeight: 500, borderRadius: 6, color: '#64748B', border: '1px solid rgba(15,23,42,0.12)' }}>
+          Отмена
+        </button>
+        {onDelete && (
+          <button onClick={() => { if (window.confirm('Удалить этот план?')) onDelete(); }} className="btn-hover"
+            style={{ padding: '9px 18px', fontSize: 13, fontWeight: 500, borderRadius: 6, color: '#DC2626', border: '1px solid rgba(220,38,38,0.3)', background: '#FFFFFF', marginLeft: 'auto' }}>
+            Удалить план
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId }) {
+  const [settingsMode, setSettingsMode] = useState(false);
+
+  const activePlan = plans.find(p => p.id === activePlanId) || null;
+
+  const createNewPlan = () => {
+    const start = todayISO();
+    const newPlan = {
+      id: newId(),
+      title: '12 недель',
+      startDate: start,
+      endDate: addDaysISO(start, TOTAL_DAYS - 1),
+      goals: []
+    };
+    setPlans(prev => [...prev, newPlan]);
+    setActivePlanId(newPlan.id);
+    setSettingsMode(true);
+  };
+
+  const savePlan = (updated) => {
+    setPlans(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setSettingsMode(false);
+  };
+
+  const deletePlan = () => {
+    setPlans(prev => {
+      const next = prev.filter(p => p.id !== activePlanId);
+      setActivePlanId(next.length > 0 ? next[0].id : null);
+      return next;
+    });
+    setSettingsMode(false);
+  };
+
+  const updateGoal = (goalId, patch) => {
+    setPlans(prev => prev.map(p => p.id !== activePlanId ? p : {
+      ...p, goals: p.goals.map(g => g.id === goalId ? { ...g, ...patch } : g)
+    }));
+  };
+
+  const toggleCell = (goalId, tacticId, iso, value) => {
+    setPlans(prev => prev.map(p => {
+      if (p.id !== activePlanId) return p;
+      return {
+        ...p,
+        goals: p.goals.map(g => {
+          if (g.id !== goalId) return g;
+          return {
+            ...g,
+            tactics: g.tactics.map(t => {
+              if (t.id !== tacticId) return t;
+              const completions = { ...t.completions };
+              if (value === null) delete completions[iso];
+              else completions[iso] = value;
+              return { ...t, completions };
+            })
+          };
+        })
+      };
+    }));
+  };
+
+  if (plans.length === 0) {
+    return (
+      <div style={{ ...S.card, textAlign: 'center', padding: 40 }}>
+        <div style={{ fontSize: 15, color: '#334155', marginBottom: 4, fontWeight: 600 }}>У вас нет ни одного плана</div>
+        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 16 }}>12 недель фокуса — поставьте цели и тактики</div>
+        <button onClick={createNewPlan} className="btn-hover"
+          style={{ padding: '10px 20px', fontSize: 13, fontWeight: 600, borderRadius: 6, background: '#0284C7', color: '#FFFFFF' }}>
+          Создать первый план
+        </button>
+      </div>
+    );
+  }
+
+  if (!activePlan) return null;
+
+  if (settingsMode) {
+    return (
+      <PlanSettings
+        plan={activePlan}
+        onSave={savePlan}
+        onCancel={() => setSettingsMode(false)}
+        onDelete={deletePlan}
+      />
+    );
+  }
+
+  const today = todayISO();
+  const daysPassed = Math.max(0, Math.min(TOTAL_DAYS, Math.floor((parseISODate(today) - parseISODate(activePlan.startDate)) / 86400000) + 1));
+  const currentWeek = Math.min(TOTAL_WEEKS, Math.max(1, Math.ceil(daysPassed / 7)));
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ ...S.card, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {plans.length > 1 ? (
+          <select value={activePlanId} onChange={e => setActivePlanId(e.target.value)}
+            style={{ ...S.input, width: 'auto', padding: '6px 10px', fontSize: 14, fontWeight: 600 }}>
+            {plans.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+        ) : (
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>{activePlan.title}</div>
+        )}
+        <div className="mono" style={{ fontSize: 12, color: '#475569' }}>
+          {fmtDayShort(activePlan.startDate)} — {fmtDayShort(activePlan.endDate)}
+        </div>
+        <div className="mono" style={{ fontSize: 12, color: '#0284C7', fontWeight: 600, padding: '4px 10px', background: '#DBEAFE', borderRadius: 5 }}>
+          Неделя {currentWeek} из {TOTAL_WEEKS}
+        </div>
+        <button onClick={createNewPlan} className="btn-hover"
+          style={{ padding: '7px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF', marginLeft: 'auto' }}>
+          + Новый план
+        </button>
+        <button onClick={() => setSettingsMode(true)} className="btn-hover"
+          style={{ padding: '7px 14px', fontSize: 12, fontWeight: 500, borderRadius: 5, color: '#0284C7', border: '1px solid rgba(2,132,199,0.3)', background: '#FFFFFF' }}>
+          Настроить план
+        </button>
+      </div>
+
+      {/* Goals */}
+      {activePlan.goals.length === 0 ? (
+        <div style={{ ...S.card, textAlign: 'center', padding: 24 }}>
+          <div style={{ fontSize: 13, color: '#64748B', marginBottom: 10 }}>В плане нет целей</div>
+          <button onClick={() => setSettingsMode(true)} className="btn-hover"
+            style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, background: '#0284C7', color: '#FFFFFF' }}>
+            Добавить цели
+          </button>
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            {activePlan.goals.map(g => (
+              <GoalCard key={g.id} goal={g} onUpdate={(patch) => updateGoal(g.id, patch)} />
+            ))}
+          </div>
+          <TrackingTable plan={activePlan} onToggleCell={toggleCell} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ===== Главный компонент =====
 
 function App() {
@@ -981,6 +1566,9 @@ function App() {
   const [activeId, setActiveId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [loaded, setLoaded] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [activePlanId, setActivePlanId] = useState(null);
+  const [plansLoaded, setPlansLoaded] = useState(false);
 
   // load from localStorage
   useEffect(() => {
@@ -993,6 +1581,16 @@ function App() {
       }
     } catch (e) { console.warn('load failed', e); }
     setLoaded(true);
+
+    try {
+      const raw = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        setPlans(Array.isArray(data.plans) ? data.plans : []);
+        setActivePlanId(data.activePlanId || null);
+      }
+    } catch (e) { console.warn('weekplan load failed', e); }
+    setPlansLoaded(true);
   }, []);
 
   // save to localStorage
@@ -1004,6 +1602,21 @@ function App() {
       }));
     } catch (e) { console.warn('save failed', e); }
   }, [tasks, activeId, loaded]);
+
+  // save weekplan to localStorage
+  useEffect(() => {
+    if (!plansLoaded) return;
+    try {
+      localStorage.setItem(WEEKPLAN_STORAGE_KEY, JSON.stringify({ plans, activePlanId }));
+    } catch (e) { console.warn('weekplan save failed', e); }
+  }, [plans, activePlanId, plansLoaded]);
+
+  // ensure activePlanId points to existing plan
+  useEffect(() => {
+    if (plans.length > 0 && !plans.find(p => p.id === activePlanId)) {
+      setActivePlanId(plans[0].id);
+    }
+  }, [plans, activePlanId]);
 
   // ticking clock for running timers
   useEffect(() => {
@@ -1026,13 +1639,18 @@ function App() {
         <div style={S.tabs}>
           <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Канбан</button>
           <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
+          <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
         </div>
         <button onClick={reset} style={S.resetBtn} className="btn-hover">Сбросить</button>
       </div>
       <div style={S.container}>
-        {tab === 'kanban'
-          ? <KanbanView tasks={tasks} activeId={activeId} setTasks={setTasks} setActiveId={setActiveId} now={now} />
-          : <ReportsView tasks={tasks} />}
+        {tab === 'kanban' && (
+          <KanbanView tasks={tasks} activeId={activeId} setTasks={setTasks} setActiveId={setActiveId} now={now} />
+        )}
+        {tab === 'reports' && <ReportsView tasks={tasks} />}
+        {tab === 'weekplan' && (
+          <WeekPlanView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} />
+        )}
       </div>
     </div>
   );
