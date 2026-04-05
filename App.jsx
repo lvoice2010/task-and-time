@@ -1411,15 +1411,18 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ goal, tactic, isFirst, tacticCount }, rIdx) => (
+            {rows.map(({ goal, tactic, isFirst, tacticCount }, rIdx) => {
+              const topBorder = isFirst && rIdx > 0 ? '3px solid rgba(15,23,42,0.2)' : 'none';
+              const goalBg = isFirst ? '#E2E8F0' : stickyBg;
+              return (
               <tr key={`${goal.id}-${tactic.id}`}>
-                <td style={{ ...stickyStyle, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', textAlign: 'center', fontWeight: 600, color: '#64748B' }}>
+                <td style={{ ...stickyStyle, background: goalBg, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, textAlign: 'center', fontWeight: 700, color: '#334155' }}>
                   {isFirst ? goal.number : ''}
                 </td>
-                <td style={{ ...stickyStyle, left: 30, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', color: '#0F172A', fontWeight: isFirst ? 600 : 400, fontSize: 11, fontFamily: 'DM Sans' }}>
+                <td style={{ ...stickyStyle, background: goalBg, left: 30, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontWeight: isFirst ? 700 : 400, fontSize: 11, fontFamily: 'DM Sans' }}>
                   {isFirst ? goal.title : ''}
                 </td>
-                <td style={{ ...stickyStyle, left: 210, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', color: '#334155', fontSize: 11, fontFamily: 'DM Sans' }}>
+                <td style={{ ...stickyStyle, left: 210, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 11, fontFamily: 'DM Sans' }}>
                   {tactic.title}
                   <span style={{ fontSize: 9, color: '#94A3B8', marginLeft: 4 }}>
                     {tactic.frequency === 'weekday' ? '(5/7)' : '(7/7)'}
@@ -1460,6 +1463,7 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                         width: cellSize, height: cellSize, padding: 0, textAlign: 'center',
                         borderBottom: '1px solid rgba(15,23,42,0.04)',
                         borderLeft: border,
+                        borderTop: topBorder,
                         background: bg, color, fontWeight: 900, fontSize: 16,
                         cursor: clickable ? 'pointer' : 'default',
                         userSelect: 'none',
@@ -1471,7 +1475,7 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                   );
                 })}
               </tr>
-            ))}
+            );})}
             {/* Week totals row */}
             <tr>
               <td colSpan={3} style={{ ...stickyStyle, left: 0, padding: '8px 6px', borderTop: '2px solid rgba(15,23,42,0.1)', color: '#64748B', fontWeight: 600, textAlign: 'right', fontSize: 10, fontFamily: 'DM Sans' }}>
