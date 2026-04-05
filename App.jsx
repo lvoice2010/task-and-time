@@ -13,15 +13,15 @@ const COLUMNS = [
 ];
 
 const DEPTS = [
-  { id: 'sales',     name: 'Продажи',     color: '#FB923C' },
-  { id: 'marketing', name: 'Маркетинг',   color: '#A78BFA' },
-  { id: 'ops',       name: 'Операционка', color: '#38BDF8' },
+  { id: 'sales',     name: 'Продажи',     color: '#A855F7' },
+  { id: 'marketing', name: 'Маркетинг',   color: '#CA8A04' },
+  { id: 'ops',       name: 'Операционка', color: '#92400E' },
 ];
 
 const COMPANIES = [
-  { id: 'kg', name: 'КиберГусли', short: 'КГ', color: '#34D399' },
-  { id: 'kc', name: 'КЦ',         short: 'КЦ', color: '#FBBF24' },
-  { id: 'pf', name: 'ПФ',         short: 'ПФ', color: '#F472B6' },
+  { id: 'kg', name: 'КиберГусли', short: 'КГ', color: '#2563EB' },
+  { id: 'kc', name: 'КЦ',         short: 'КЦ', color: '#DC2626' },
+  { id: 'pf', name: 'ПФ',         short: 'ПФ', color: '#059669' },
 ];
 
 const DEPT_IDS = ['sales', 'marketing', 'ops'];
