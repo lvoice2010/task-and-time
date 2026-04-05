@@ -551,8 +551,10 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const total = tasks.reduce((s, t) => s + taskTotal(t, now), 0);
+  const plannedMin = tasks.reduce((s, t) => s + (t.estimateMinutes || 0), 0);
   const totalInColumn = allTasks.filter(t => t.column === column.id).length;
   const hiddenCount = totalInColumn - tasks.length;
+  const showPlanned = column.id === 'today' || column.id === 'week';
 
   return (
     <div
@@ -568,15 +570,24 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
         transition: 'all 0.15s'
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: `2px solid ${column.color}55` }}>
-        <div style={{ width: 8, height: 8, borderRadius: 2, background: column.color }} />
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', flex: 1 }}>{column.title}</div>
-        <span className="mono" style={{ fontSize: 10, color: '#64748B', fontWeight: 500 }}>
-          {totalInColumn !== tasks.length ? `${tasks.length}/${totalInColumn}` : tasks.length}
-        </span>
-        <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 600 }}>
-          Σ {fmtDuration(total)}
-        </span>
+      <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: `2px solid ${column.color}55` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: column.color }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', flex: 1 }}>{column.title}</div>
+          <span className="mono" style={{ fontSize: 10, color: '#64748B', fontWeight: 500 }}>
+            {totalInColumn !== tasks.length ? `${tasks.length}/${totalInColumn}` : tasks.length}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+          {showPlanned && (
+            <span className="mono" style={{ fontSize: 10, color: '#475569', fontWeight: 500 }} title="Запланировано по оценкам задач">
+              📋 {fmtDuration(plannedMin * 60000)}
+            </span>
+          )}
+          <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 600 }} title="Фактически потрачено">
+            Σ {fmtDuration(total)}
+          </span>
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 40 }}>
