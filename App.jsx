@@ -1395,15 +1395,15 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
         <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: 34 }} />
-            <col style={{ width: 160 }} />
-            <col style={{ width: 200 }} />
+            <col style={{ width: 220 }} />
+            <col style={{ width: 240 }} />
             {days.map(iso => <col key={iso} style={{ width: cellSize }} />)}
           </colgroup>
           <thead>
             <tr>
               <th style={{ ...stickyStyle, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B' }}>№</th>
               <th style={{ ...stickyStyle, left: 34, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Цель</th>
-              <th style={{ ...stickyStyle, left: 194, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Тактика</th>
+              <th style={{ ...stickyStyle, left: 254, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Тактика</th>
               {days.map((iso, i) => {
                 const d = parseISODate(iso);
                 const isToday = iso === today;
@@ -1437,10 +1437,10 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                 <td style={{ ...stickyStyle, background: goalBg, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, textAlign: 'center', fontWeight: 700, color: '#334155' }}>
                   {isFirst ? goal.number : ''}
                 </td>
-                <td style={{ ...stickyStyle, background: goalBg, left: 34, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontWeight: isFirst ? 700 : 400, fontSize: 11, fontFamily: 'DM Sans', wordBreak: 'break-word' }}>
+                <td style={{ ...stickyStyle, background: goalBg, left: 34, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontWeight: isFirst ? 700 : 400, fontSize: 12, fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={isFirst ? goal.title : ''}>
                   {isFirst ? goal.title : ''}
                 </td>
-                <td style={{ ...stickyStyle, left: 194, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 11, fontFamily: 'DM Sans', wordBreak: 'break-word' }}>
+                <td style={{ ...stickyStyle, left: 254, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 12, fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={tactic.title}>
                   {tactic.title}
                   <span style={{ fontSize: 9, color: '#94A3B8', marginLeft: 4 }}>
                     {tactic.frequency === 'weekday' ? '(5/7)' : '(7/7)'}
