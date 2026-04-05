@@ -86,15 +86,15 @@ const fmtDate = (ts) => {
 
 // ===== Стили-хелперы =====
 const S = {
-  app: { minHeight: '100vh', background: '#F8FAFC', color: '#0F172A', display: 'flex', flexDirection: 'column' },
+  app: { minHeight: '100vh', background: '#E2E8F0', color: '#0F172A', display: 'flex', flexDirection: 'column' },
   header: {
     padding: '14px 20px',
     borderBottom: '1px solid rgba(15,23,42,0.08)',
     display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-    background: '#FFFFFF'
+    background: '#F1F5F9'
   },
   logo: { fontWeight: 700, fontSize: 18, letterSpacing: '-0.01em', color: '#0F172A' },
-  tabs: { display: 'flex', background: '#F1F5F9', borderRadius: 8, padding: 3 },
+  tabs: { display: 'flex', background: '#E2E8F0', borderRadius: 8, padding: 3 },
   tab: (active) => ({
     padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 500,
     color: active ? '#0284C7' : '#64748B',
@@ -343,8 +343,8 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
       className={dragOver ? 'drag-over' : ''}
       style={{
         minWidth: 280, width: 280, flexShrink: 0,
-        background: '#F1F5F9',
-        border: '1px solid rgba(15,23,42,0.06)',
+        background: '#CBD5E1',
+        border: '1px solid rgba(15,23,42,0.08)',
         borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column',
         transition: 'all 0.15s'
       }}
@@ -496,7 +496,7 @@ function BarChart({ title, rows, maxVal }) {
                 <span style={{ fontSize: 12, color: '#334155' }}>{r.label}</span>
                 <span className="mono" style={{ fontSize: 12, color: r.color, fontWeight: 600 }}>{fmtHours(r.value)} ч</span>
               </div>
-              <div style={{ height: 6, background: '#F1F5F9', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: r.color, borderRadius: 3, transition: 'width 0.3s' }} />
               </div>
             </div>
