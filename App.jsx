@@ -1,0 +1,760 @@
+const { useState, useEffect, useRef, useMemo } = React;
+
+// ===== Конфигурация =====
+const STORAGE_KEY = 'kanban-v4';
+
+const COLUMNS = [
+  { id: 'today',     title: 'Сегодня',              color: '#FF6B6B' },
+  { id: 'week',      title: 'На неделю',            color: '#FBBF24' },
+  { id: 'urgent',    title: 'Срочно / Важно',       color: '#F97316' },
+  { id: 'important', title: 'Важно / Не срочно',    color: '#38BDF8' },
+  { id: 'later',     title: 'Не срочно / Не важно', color: '#A78BFA' },
+  { id: 'done',      title: 'Сделано',              color: '#34D399' },
+];
+
+const DEPTS = [
+  { id: 'sales',     name: 'Продажи',     color: '#FB923C' },
+  { id: 'marketing', name: 'Маркетинг',   color: '#A78BFA' },
+  { id: 'ops',       name: 'Операционка', color: '#38BDF8' },
+];
+
+const COMPANIES = [
+  { id: 'kg', name: 'КиберГусли', short: 'КГ', color: '#34D399' },
+  { id: 'kc', name: 'КЦ',         short: 'КЦ', color: '#FBBF24' },
+  { id: 'pf', name: 'ПФ',         short: 'ПФ', color: '#F472B6' },
+];
+
+const DEPT_IDS = ['sales', 'marketing', 'ops'];
+const COMPANY_IDS = ['kg', 'kc', 'pf'];
+
+const getDept = (id) => DEPTS.find(d => d.id === id);
+const getCompany = (id) => COMPANIES.find(c => c.id === id);
+const getColumn = (id) => COLUMNS.find(c => c.id === id);
+
+// ===== Утилиты =====
+const newId = () => Math.random().toString(36).slice(2, 11);
+
+const sessionDuration = (s, now = Date.now()) => {
+  const end = s.end == null ? now : s.end;
+  return Math.max(0, end - s.start);
+};
+
+const taskTotal = (task, now = Date.now()) =>
+  task.sessions.reduce((acc, s) => acc + sessionDuration(s, now), 0);
+
+const taskTotalInRange = (task, from, to) => {
+  let sum = 0;
+  const now = Date.now();
+  for (const s of task.sessions) {
+    const start = s.start;
+    const end = s.end == null ? now : s.end;
+    const a = Math.max(start, from);
+    const b = Math.min(end, to);
+    if (b > a) sum += (b - a);
+  }
+  return sum;
+};
+
+const isActiveSession = (s) => s.end == null;
+const taskHasActive = (t) => t.sessions.some(isActiveSession);
+const taskStatus = (t) => {
+  if (t.sessions.length === 0) return 'waiting';
+  if (taskHasActive(t)) return 'running';
+  return 'paused';
+};
+
+const fmtDuration = (ms) => {
+  if (ms <= 0) return '0с';
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return `${totalSec}с`;
+  const totalMin = Math.floor(totalSec / 60);
+  if (totalMin < 60) {
+    const sec = totalSec % 60;
+    return `${totalMin}м ${sec}с`;
+  }
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}ч ${m}м`;
+};
+
+const fmtHours = (ms) => (ms / 3600000).toFixed(1);
+
+const fmtDate = (ts) => {
+  const d = new Date(ts);
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+};
+
+// ===== Стили-хелперы =====
+const S = {
+  app: { minHeight: '100vh', background: '#0B0E14', color: '#E2E8F0', display: 'flex', flexDirection: 'column' },
+  header: {
+    padding: '14px 20px',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+    background: 'rgba(255,255,255,0.015)'
+  },
+  logo: { fontWeight: 700, fontSize: 18, letterSpacing: '-0.01em' },
+  tabs: { display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3 },
+  tab: (active) => ({
+    padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 500,
+    color: active ? '#38BDF8' : '#64748B',
+    background: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+    transition: 'all 0.15s'
+  }),
+  resetBtn: {
+    marginLeft: 'auto', padding: '7px 14px', fontSize: 12, fontWeight: 500,
+    border: '1px solid rgba(239,68,68,0.4)', color: '#EF4444',
+    borderRadius: 6, background: 'transparent', transition: 'all 0.15s'
+  },
+  container: { padding: 20, flex: 1, overflowY: 'auto' },
+  card: {
+    background: 'rgba(255,255,255,0.025)',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 10, padding: 12
+  },
+  input: {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 6, padding: '8px 12px', color: '#E2E8F0',
+    fontSize: 14, width: '100%', fontFamily: 'DM Sans'
+  },
+  chip: (active, color) => ({
+    padding: '5px 10px', fontSize: 11, fontWeight: 500, borderRadius: 6,
+    border: `1px solid ${active ? color : 'rgba(255,255,255,0.1)'}`,
+    background: active ? `${color}22` : 'transparent',
+    color: active ? color : '#94A3B8',
+    transition: 'all 0.15s', fontFamily: 'JetBrains Mono'
+  }),
+  badge: (color, bg) => ({
+    padding: '2px 7px', fontSize: 10, fontWeight: 600, borderRadius: 4,
+    color: color, background: bg || `${color}1F`, fontFamily: 'JetBrains Mono',
+    display: 'inline-flex', alignItems: 'center', gap: 4, letterSpacing: '0.02em'
+  }),
+};
+
+// ===== Компоненты =====
+
+function StatusBadge({ status }) {
+  const map = {
+    waiting: { text: 'Ожидает',  color: '#64748B' },
+    running: { text: 'В работе', color: '#34D399' },
+    paused:  { text: 'Пауза',    color: '#FBBF24' },
+  };
+  const s = map[status];
+  return (
+    <span style={S.badge(s.color)}>
+      {status === 'running' && <span className="pulse" style={{ width: 5, height: 5, borderRadius: '50%', background: '#34D399', display: 'inline-block' }} />}
+      {s.text}
+    </span>
+  );
+}
+
+function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompany, onDelete, onRename, onDragStart, now }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(task.title);
+  const status = taskStatus(task);
+  const total = taskTotal(task, now);
+  const dept = getDept(task.dept);
+  const company = getCompany(task.company);
+
+  useEffect(() => { setTitle(task.title); }, [task.title]);
+
+  const commitTitle = () => {
+    const v = title.trim();
+    if (v && v !== task.title) onRename(v);
+    else setTitle(task.title);
+    setEditing(false);
+  };
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, task.id)}
+      className="card-hover"
+      style={{ ...S.card, cursor: 'grab', marginBottom: 8 }}
+    >
+      {/* tags row */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+        <StatusBadge status={status} />
+        {dept && <span style={S.badge(dept.color)}>{dept.name}</span>}
+        {company && <span style={S.badge(company.color)}>{company.short}</span>}
+      </div>
+
+      {/* title */}
+      {editing ? (
+        <input
+          autoFocus value={title}
+          onChange={e => setTitle(e.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commitTitle();
+            if (e.key === 'Escape') { setTitle(task.title); setEditing(false); }
+          }}
+          style={{ ...S.input, padding: '4px 6px', fontSize: 14, marginBottom: 8 }}
+        />
+      ) : (
+        <div
+          onDoubleClick={() => setEditing(true)}
+          style={{ fontSize: 14, fontWeight: 500, color: '#E2E8F0', marginBottom: 10, lineHeight: 1.35, wordBreak: 'break-word' }}
+        >
+          {task.title}
+        </div>
+      )}
+
+      {/* timer display */}
+      <div className="mono" style={{ fontSize: 13, color: isActive ? '#34D399' : '#94A3B8', marginBottom: 10, fontWeight: 500 }}>
+        {fmtDuration(total)}
+      </div>
+
+      {/* buttons */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        {status === 'running' ? (
+          <button
+            className="btn-hover"
+            onClick={onPause}
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: 'rgba(251,191,36,0.15)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.3)' }}
+          >⏸ Пауза</button>
+        ) : (
+          <button
+            className="btn-hover"
+            onClick={onStart}
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+          >▶ {status === 'paused' ? 'Прод.' : 'Старт'}</button>
+        )}
+        <button className="btn-hover" onClick={onCycleDept} title="Сменить отдел"
+          style={{ padding: '4px 8px', fontSize: 12, color: dept ? dept.color : '#475569', borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)' }}>◆</button>
+        <button className="btn-hover" onClick={onCycleCompany} title="Сменить компанию"
+          style={{ padding: '4px 8px', fontSize: 12, color: company ? company.color : '#475569', borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)' }}>●</button>
+        <button className="btn-hover" onClick={onDelete} title="Удалить"
+          style={{ padding: '4px 8px', fontSize: 12, color: '#64748B', borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)', marginLeft: 'auto' }}>×</button>
+      </div>
+
+      <div className="mono" style={{ fontSize: 10, color: '#475569', marginTop: 8 }}>
+        {fmtDate(task.createdAt)}
+      </div>
+    </div>
+  );
+}
+
+function AddTaskForm({ onAdd }) {
+  const [title, setTitle] = useState('');
+  const [dept, setDept] = useState(null);
+  const [company, setCompany] = useState(null);
+
+  const submit = () => {
+    const v = title.trim();
+    if (!v) return;
+    onAdd(v, dept, company);
+    setTitle(''); setDept(null); setCompany(null);
+  };
+
+  return (
+    <div style={{ ...S.card, marginBottom: 16 }}>
+      <input
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') submit();
+          if (e.key === 'Escape') { setTitle(''); setDept(null); setCompany(null); }
+        }}
+        placeholder="Новая задача... (Enter)"
+        style={{ ...S.input, marginBottom: 10 }}
+      />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+        {DEPTS.map(d => (
+          <button key={d.id} onClick={() => setDept(dept === d.id ? null : d.id)} style={S.chip(dept === d.id, d.color)}>
+            {d.name}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {COMPANIES.map(c => (
+          <button key={c.id} onClick={() => setCompany(company === c.id ? null : c.id)} style={S.chip(company === c.id, c.color)}>
+            {c.short}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FilterBar({ deptFilter, setDeptFilter, companyFilter, setCompanyFilter }) {
+  return (
+    <div style={{ ...S.card, marginBottom: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500, marginRight: 4 }}>ОТДЕЛ</span>
+        <button onClick={() => setDeptFilter(null)} style={S.chip(deptFilter === null, '#64748B')}>Все</button>
+        {DEPTS.map(d => (
+          <button key={d.id} onClick={() => setDeptFilter(deptFilter === d.id ? null : d.id)} style={S.chip(deptFilter === d.id, d.color)}>{d.name}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500, marginRight: 4 }}>КОМПАНИЯ</span>
+        <button onClick={() => setCompanyFilter(null)} style={S.chip(companyFilter === null, '#64748B')}>Все</button>
+        {COMPANIES.map(c => (
+          <button key={c.id} onClick={() => setCompanyFilter(companyFilter === c.id ? null : c.id)} style={S.chip(companyFilter === c.id, c.color)}>{c.short}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SummaryBar({ tasks, activeTask, now }) {
+  const total = tasks.length;
+  const done = tasks.filter(t => t.column === 'done').length;
+  const totalTime = tasks.reduce((s, t) => s + taskTotal(t, now), 0);
+  const doneTime = tasks.filter(t => t.column === 'done').reduce((s, t) => s + taskTotal(t, now), 0);
+
+  const item = (label, value, color) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ fontSize: 10, color: '#64748B', fontWeight: 500, letterSpacing: '0.05em' }}>{label}</div>
+      <div className="mono" style={{ fontSize: 14, color: color || '#E2E8F0', fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ ...S.card, marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+      {item('ЗАДАЧ', total)}
+      {item('СДЕЛАНО', done, '#34D399')}
+      {item('ВРЕМЯ', fmtDuration(totalTime))}
+      {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTime), '#34D399')}
+      {activeTask && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: 'rgba(52,211,153,0.1)', borderRadius: 6, border: '1px solid rgba(52,211,153,0.2)' }}>
+          <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#34D399' }} />
+          <span style={{ fontSize: 12, color: '#34D399', fontWeight: 500 }}>{activeTask.title}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart }) {
+  const [dragOver, setDragOver] = useState(false);
+  const total = tasks.reduce((s, t) => s + taskTotal(t, now), 0);
+  const totalInColumn = allTasks.filter(t => t.column === column.id).length;
+  const hiddenCount = totalInColumn - tasks.length;
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); onDrop(column.id); }}
+      className={dragOver ? 'drag-over' : ''}
+      style={{
+        minWidth: 280, width: 280, flexShrink: 0,
+        background: 'rgba(255,255,255,0.015)',
+        border: '1px solid rgba(255,255,255,0.04)',
+        borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column',
+        transition: 'all 0.15s'
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: `2px solid ${column.color}33` }}>
+        <div style={{ width: 8, height: 8, borderRadius: 2, background: column.color }} />
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#CBD5E1', flex: 1 }}>{column.title}</div>
+        <span className="mono" style={{ fontSize: 10, color: '#64748B', fontWeight: 500 }}>
+          {totalInColumn !== tasks.length ? `${tasks.length}/${totalInColumn}` : tasks.length}
+        </span>
+        <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 500 }}>
+          Σ {fmtDuration(total)}
+        </span>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 40 }}>
+        {tasks.length === 0 && hiddenCount === 0 && (
+          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '20px 0' }}>— пусто —</div>
+        )}
+        {tasks.length === 0 && hiddenCount > 0 && (
+          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '20px 0' }}>{hiddenCount} скрыто</div>
+        )}
+        {tasks.map(t => (
+          <TaskCard
+            key={t.id} task={t} now={now} isActive={activeId === t.id}
+            onDragStart={onDragStart}
+            onStart={() => onTaskAction('start', t.id)}
+            onPause={() => onTaskAction('pause', t.id)}
+            onCycleDept={() => onTaskAction('cycleDept', t.id)}
+            onCycleCompany={() => onTaskAction('cycleCompany', t.id)}
+            onDelete={() => onTaskAction('delete', t.id)}
+            onRename={(v) => onTaskAction('rename', t.id, v)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
+  const [deptFilter, setDeptFilter] = useState(null);
+  const [companyFilter, setCompanyFilter] = useState(null);
+  const draggedId = useRef(null);
+
+  const onDragStart = (e, id) => {
+    draggedId.current = id;
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDrop = (columnId) => {
+    const id = draggedId.current;
+    if (!id) return;
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, column: columnId } : t));
+    draggedId.current = null;
+  };
+
+  const addTask = (title, dept, company) => {
+    setTasks(prev => [...prev, {
+      id: newId(), title, column: 'today', dept, company,
+      sessions: [], createdAt: Date.now()
+    }]);
+  };
+
+  const cycleValue = (cur, list) => {
+    if (cur == null) return list[0];
+    const i = list.indexOf(cur);
+    if (i === -1 || i === list.length - 1) return null;
+    return list[i + 1];
+  };
+
+  const handleTaskAction = (action, id, payload) => {
+    if (action === 'start') {
+      const nowTs = Date.now();
+      setTasks(prev => prev.map(t => {
+        // pause any active
+        if (t.id !== id && taskHasActive(t)) {
+          return { ...t, sessions: t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s) };
+        }
+        if (t.id === id) {
+          // close any existing active just in case, then open new
+          const closed = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
+          return { ...t, sessions: [...closed, { start: nowTs, end: null }] };
+        }
+        return t;
+      }));
+      setActiveId(id);
+    } else if (action === 'pause') {
+      const nowTs = Date.now();
+      setTasks(prev => prev.map(t => t.id === id
+        ? { ...t, sessions: t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s) }
+        : t));
+      setActiveId(null);
+    } else if (action === 'cycleDept') {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, dept: cycleValue(t.dept, DEPT_IDS) } : t));
+    } else if (action === 'cycleCompany') {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, company: cycleValue(t.company, COMPANY_IDS) } : t));
+    } else if (action === 'delete') {
+      setTasks(prev => prev.filter(t => t.id !== id));
+      if (activeId === id) setActiveId(null);
+    } else if (action === 'rename') {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, title: payload } : t));
+    }
+  };
+
+  const filtered = tasks.filter(t =>
+    (deptFilter == null || t.dept === deptFilter) &&
+    (companyFilter == null || t.company === companyFilter)
+  );
+
+  const activeTask = activeId ? tasks.find(t => t.id === activeId) : null;
+
+  return (
+    <div>
+      <SummaryBar tasks={tasks} activeTask={activeTask} now={now} />
+      <AddTaskForm onAdd={addTask} />
+      <FilterBar
+        deptFilter={deptFilter} setDeptFilter={setDeptFilter}
+        companyFilter={companyFilter} setCompanyFilter={setCompanyFilter}
+      />
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12 }}>
+        {COLUMNS.map(col => (
+          <KanbanColumn
+            key={col.id} column={col} now={now}
+            tasks={filtered.filter(t => t.column === col.id)}
+            allTasks={tasks}
+            activeId={activeId}
+            onDrop={handleDrop}
+            onDragStart={onDragStart}
+            onTaskAction={handleTaskAction}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== Отчёты =====
+
+function BarChart({ title, rows, maxVal }) {
+  return (
+    <div style={{ ...S.card, flex: 1, minWidth: 280 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#CBD5E1', marginBottom: 14, letterSpacing: '0.02em' }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rows.map(r => {
+          const pct = maxVal > 0 ? (r.value / maxVal) * 100 : 0;
+          return (
+            <div key={r.key}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: '#CBD5E1' }}>{r.label}</span>
+                <span className="mono" style={{ fontSize: 12, color: r.color, fontWeight: 500 }}>{fmtHours(r.value)} ч</span>
+              </div>
+              <div style={{ height: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: r.color, borderRadius: 3, transition: 'width 0.3s' }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ReportsView({ tasks }) {
+  const [period, setPeriod] = useState('week');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+
+  const { from, to } = useMemo(() => {
+    const now = Date.now();
+    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+    if (period === 'today') return { from: startOfDay.getTime(), to: now };
+    if (period === 'week')  return { from: now - 7 * 86400000, to: now };
+    if (period === 'month') return { from: now - 30 * 86400000, to: now };
+    if (period === 'all')   return { from: 0, to: now };
+    if (period === 'custom') {
+      const f = customFrom ? new Date(customFrom).getTime() : 0;
+      const toDate = customTo ? new Date(customTo) : new Date();
+      toDate.setHours(23, 59, 59, 999);
+      return { from: f, to: toDate.getTime() };
+    }
+    return { from: 0, to: now };
+  }, [period, customFrom, customTo]);
+
+  const tasksWithTime = useMemo(() =>
+    tasks.map(t => ({ ...t, rangeTime: taskTotalInRange(t, from, to) }))
+      .filter(t => t.rangeTime > 0),
+    [tasks, from, to]
+  );
+
+  const totalTime = tasksWithTime.reduce((s, t) => s + t.rangeTime, 0);
+
+  const byDept = useMemo(() => {
+    const map = { sales: 0, marketing: 0, ops: 0, none: 0 };
+    tasksWithTime.forEach(t => { map[t.dept || 'none'] += t.rangeTime; });
+    return map;
+  }, [tasksWithTime]);
+
+  const byCompany = useMemo(() => {
+    const map = { kg: 0, kc: 0, pf: 0, none: 0 };
+    tasksWithTime.forEach(t => { map[t.company || 'none'] += t.rangeTime; });
+    return map;
+  }, [tasksWithTime]);
+
+  const deptRows = [
+    ...DEPTS.map(d => ({ key: d.id, label: d.name, color: d.color, value: byDept[d.id] })),
+    { key: 'none', label: 'Без отдела', color: '#64748B', value: byDept.none },
+  ];
+  const companyRows = [
+    ...COMPANIES.map(c => ({ key: c.id, label: c.name, color: c.color, value: byCompany[c.id] })),
+    { key: 'none', label: 'Без компании', color: '#64748B', value: byCompany.none },
+  ];
+
+  const maxVal = Math.max(...deptRows.map(r => r.value), ...companyRows.map(r => r.value), 0.001);
+
+  // Cross table dept x company
+  const cross = useMemo(() => {
+    const matrix = {};
+    DEPTS.forEach(d => { matrix[d.id] = { kg: 0, kc: 0, pf: 0, none: 0, total: 0 }; });
+    matrix['none'] = { kg: 0, kc: 0, pf: 0, none: 0, total: 0 };
+    tasksWithTime.forEach(t => {
+      const dk = t.dept || 'none';
+      const ck = t.company || 'none';
+      matrix[dk][ck] += t.rangeTime;
+      matrix[dk].total += t.rangeTime;
+    });
+    const colTotals = { kg: 0, kc: 0, pf: 0, none: 0, total: 0 };
+    Object.values(matrix).forEach(row => {
+      colTotals.kg += row.kg; colTotals.kc += row.kc; colTotals.pf += row.pf;
+      colTotals.none += row.none; colTotals.total += row.total;
+    });
+    return { matrix, colTotals };
+  }, [tasksWithTime]);
+
+  const topTasks = useMemo(() =>
+    [...tasksWithTime].sort((a, b) => b.rangeTime - a.rangeTime).slice(0, 15),
+    [tasksWithTime]
+  );
+
+  const periodBtn = (id, label) => (
+    <button key={id} onClick={() => setPeriod(id)} style={S.chip(period === id, '#38BDF8')}>{label}</button>
+  );
+
+  const cellHours = (ms) => ms > 0 ? fmtHours(ms) : '—';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* period picker */}
+      <div style={{ ...S.card, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {periodBtn('today', 'Сегодня')}
+        {periodBtn('week', '7 дней')}
+        {periodBtn('month', '30 дней')}
+        {periodBtn('all', 'Всё время')}
+        {periodBtn('custom', 'Свой период')}
+        {period === 'custom' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 8 }}>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+              style={{ ...S.input, width: 'auto', padding: '6px 8px' }} />
+            <span style={{ color: '#64748B' }}>→</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+              style={{ ...S.input, width: 'auto', padding: '6px 8px' }} />
+          </div>
+        )}
+      </div>
+
+      {/* summary */}
+      <div style={{ ...S.card, display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500, letterSpacing: '0.05em', marginBottom: 4 }}>ОБЩЕЕ ВРЕМЯ</div>
+          <div className="mono" style={{ fontSize: 28, color: '#E2E8F0', fontWeight: 600 }}>{fmtHours(totalTime)} ч</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500, letterSpacing: '0.05em', marginBottom: 4 }}>ЗАДАЧ</div>
+          <div className="mono" style={{ fontSize: 28, color: '#38BDF8', fontWeight: 600 }}>{tasksWithTime.length}</div>
+        </div>
+      </div>
+
+      {/* bars */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <BarChart title="ПО НАПРАВЛЕНИЯМ" rows={deptRows} maxVal={maxVal} />
+        <BarChart title="ПО КОМПАНИЯМ" rows={companyRows} maxVal={maxVal} />
+      </div>
+
+      {/* cross table */}
+      <div style={S.card}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#CBD5E1', marginBottom: 14, letterSpacing: '0.02em' }}>НАПРАВЛЕНИЕ × КОМПАНИЯ (ч)</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="mono" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.08)' }}></th>
+                {COMPANIES.map(c => (
+                  <th key={c.id} style={{ padding: '8px 12px', color: c.color, fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'right' }}>{c.short}</th>
+                ))}
+                <th style={{ padding: '8px 12px', color: '#94A3B8', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'right' }}>Без</th>
+                <th style={{ padding: '8px 12px', color: '#E2E8F0', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'right' }}>Σ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...DEPTS, { id: 'none', name: 'Без отдела', color: '#94A3B8' }].map(d => {
+                const row = cross.matrix[d.id];
+                return (
+                  <tr key={d.id}>
+                    <td style={{ padding: '8px 12px', color: d.color, fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{d.name}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.kg)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.kc)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.pf)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.none)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.total)}</td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td style={{ padding: '8px 12px', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>Σ</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.kg)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.kc)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.pf)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.none)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#38BDF8', fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* top tasks */}
+      <div style={S.card}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#CBD5E1', marginBottom: 14, letterSpacing: '0.02em' }}>ТОП ЗАДАЧ ПО ВРЕМЕНИ (до 15)</div>
+        {topTasks.length === 0 && <div style={{ fontSize: 12, color: '#64748B' }}>Нет данных за период.</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {topTasks.map((t, i) => {
+            const dept = getDept(t.dept);
+            const company = getCompany(t.company);
+            return (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < topTasks.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                <span className="mono" style={{ fontSize: 11, color: '#475569', minWidth: 22, fontWeight: 500 }}>{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontSize: 13, color: '#E2E8F0', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                {dept && <span style={S.badge(dept.color)}>{dept.name}</span>}
+                {company && <span style={S.badge(company.color)}>{company.short}</span>}
+                <span className="mono" style={{ fontSize: 12, color: '#38BDF8', fontWeight: 600, minWidth: 55, textAlign: 'right' }}>{fmtHours(t.rangeTime)} ч</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Главный компонент =====
+
+function App() {
+  const [tab, setTab] = useState('kanban');
+  const [tasks, setTasks] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [loaded, setLoaded] = useState(false);
+
+  // load from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        setTasks(Array.isArray(data.tasks) ? data.tasks : []);
+        setActiveId(data.activeTimerId || null);
+      }
+    } catch (e) { console.warn('load failed', e); }
+    setLoaded(true);
+  }, []);
+
+  // save to localStorage
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        tasks, activeTimerId: activeId, timerStartedAt: null
+      }));
+    } catch (e) { console.warn('save failed', e); }
+  }, [tasks, activeId, loaded]);
+
+  // ticking clock for running timers
+  useEffect(() => {
+    const i = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  const reset = () => {
+    if (window.confirm('Удалить все задачи и данные?')) {
+      setTasks([]);
+      setActiveId(null);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
+
+  return (
+    <div style={S.app}>
+      <div style={S.header}>
+        <div style={S.logo}>Дела</div>
+        <div style={S.tabs}>
+          <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Канбан</button>
+          <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
+        </div>
+        <button onClick={reset} style={S.resetBtn} className="btn-hover">Сбросить</button>
+      </div>
+      <div style={S.container}>
+        {tab === 'kanban'
+          ? <KanbanView tasks={tasks} activeId={activeId} setTasks={setTasks} setActiveId={setActiveId} now={now} />
+          : <ReportsView tasks={tasks} />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
