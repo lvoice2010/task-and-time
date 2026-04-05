@@ -24,11 +24,12 @@ const COMPANIES = [
   { id: 'kg',       name: 'КиберГусли', short: 'КГ',   color: '#2563EB' },
   { id: 'kc',       name: 'КЦ',         short: 'КЦ',   color: '#DC2626' },
   { id: 'pf',       name: 'ПФ',         short: 'ПФ',   color: '#059669' },
+  { id: 'zd',       name: 'ЗД',         short: 'ЗД',   color: '#F59E0B' },
   { id: 'personal', name: 'Личное',     short: 'Личн', color: '#DB2777' },
 ];
 
 const DEPT_IDS = ['sales', 'marketing', 'ops', 'personal'];
-const COMPANY_IDS = ['kg', 'kc', 'pf', 'personal'];
+const COMPANY_IDS = ['kg', 'kc', 'pf', 'zd', 'personal'];
 
 const getDept = (id) => DEPTS.find(d => d.id === id);
 const getCompany = (id) => COMPANIES.find(c => c.id === id);
@@ -1042,7 +1043,7 @@ function ReportsView({ tasks }) {
   }, [tasksWithTime]);
 
   const byCompany = useMemo(() => {
-    const map = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0 };
+    const map = { kg: 0, kc: 0, pf: 0, zd: 0, personal: 0, none: 0 };
     tasksWithTime.forEach(t => { map[t.company || 'none'] += t.rangeTime; });
     return map;
   }, [tasksWithTime]);
@@ -1086,15 +1087,15 @@ function ReportsView({ tasks }) {
   // Cross table dept x company
   const cross = useMemo(() => {
     const matrix = {};
-    DEPTS.forEach(d => { matrix[d.id] = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0, total: 0 }; });
-    matrix['none'] = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0, total: 0 };
+    DEPTS.forEach(d => { matrix[d.id] = { kg: 0, kc: 0, pf: 0, zd: 0, personal: 0, none: 0, total: 0 }; });
+    matrix['none'] = { kg: 0, kc: 0, pf: 0, zd: 0, personal: 0, none: 0, total: 0 };
     tasksWithTime.forEach(t => {
       const dk = t.dept || 'none';
       const ck = t.company || 'none';
       matrix[dk][ck] += t.rangeTime;
       matrix[dk].total += t.rangeTime;
     });
-    const colTotals = { kg: 0, kc: 0, pf: 0, personal: 0, none: 0, total: 0 };
+    const colTotals = { kg: 0, kc: 0, pf: 0, zd: 0, personal: 0, none: 0, total: 0 };
     Object.values(matrix).forEach(row => {
       colTotals.kg += row.kg; colTotals.kc += row.kc; colTotals.pf += row.pf;
       colTotals.none += row.none; colTotals.total += row.total;
