@@ -86,48 +86,49 @@ const fmtDate = (ts) => {
 
 // ===== Стили-хелперы =====
 const S = {
-  app: { minHeight: '100vh', background: '#0B0E14', color: '#E2E8F0', display: 'flex', flexDirection: 'column' },
+  app: { minHeight: '100vh', background: '#F8FAFC', color: '#0F172A', display: 'flex', flexDirection: 'column' },
   header: {
     padding: '14px 20px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: '1px solid rgba(15,23,42,0.08)',
     display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-    background: 'rgba(255,255,255,0.015)'
+    background: '#FFFFFF'
   },
-  logo: { fontWeight: 700, fontSize: 18, letterSpacing: '-0.01em' },
-  tabs: { display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3 },
+  logo: { fontWeight: 700, fontSize: 18, letterSpacing: '-0.01em', color: '#0F172A' },
+  tabs: { display: 'flex', background: '#F1F5F9', borderRadius: 8, padding: 3 },
   tab: (active) => ({
     padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 500,
-    color: active ? '#38BDF8' : '#64748B',
-    background: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+    color: active ? '#0284C7' : '#64748B',
+    background: active ? '#FFFFFF' : 'transparent',
+    boxShadow: active ? '0 1px 2px rgba(15,23,42,0.06)' : 'none',
     transition: 'all 0.15s'
   }),
   resetBtn: {
     marginLeft: 'auto', padding: '7px 14px', fontSize: 12, fontWeight: 500,
-    border: '1px solid rgba(239,68,68,0.4)', color: '#EF4444',
+    border: '1px solid rgba(220,38,38,0.3)', color: '#DC2626',
     borderRadius: 6, background: 'transparent', transition: 'all 0.15s'
   },
   container: { padding: 20, flex: 1, overflowY: 'auto' },
   card: {
-    background: 'rgba(255,255,255,0.025)',
-    border: '1px solid rgba(255,255,255,0.06)',
+    background: '#FFFFFF',
+    border: '1px solid rgba(15,23,42,0.08)',
     borderRadius: 10, padding: 12
   },
   input: {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 6, padding: '8px 12px', color: '#E2E8F0',
+    background: '#FFFFFF',
+    border: '1px solid rgba(15,23,42,0.12)',
+    borderRadius: 6, padding: '8px 12px', color: '#0F172A',
     fontSize: 14, width: '100%', fontFamily: 'DM Sans'
   },
   chip: (active, color) => ({
     padding: '5px 10px', fontSize: 11, fontWeight: 500, borderRadius: 6,
-    border: `1px solid ${active ? color : 'rgba(255,255,255,0.1)'}`,
-    background: active ? `${color}22` : 'transparent',
-    color: active ? color : '#94A3B8',
+    border: `1px solid ${active ? color : 'rgba(15,23,42,0.12)'}`,
+    background: active ? `${color}1A` : '#FFFFFF',
+    color: active ? color : '#475569',
     transition: 'all 0.15s', fontFamily: 'JetBrains Mono'
   }),
   badge: (color, bg) => ({
     padding: '2px 7px', fontSize: 10, fontWeight: 600, borderRadius: 4,
-    color: color, background: bg || `${color}1F`, fontFamily: 'JetBrains Mono',
+    color: color, background: bg || `${color}1A`, fontFamily: 'JetBrains Mono',
     display: 'inline-flex', alignItems: 'center', gap: 4, letterSpacing: '0.02em'
   }),
 };
@@ -137,13 +138,13 @@ const S = {
 function StatusBadge({ status }) {
   const map = {
     waiting: { text: 'Ожидает',  color: '#64748B' },
-    running: { text: 'В работе', color: '#34D399' },
-    paused:  { text: 'Пауза',    color: '#FBBF24' },
+    running: { text: 'В работе', color: '#059669' },
+    paused:  { text: 'Пауза',    color: '#D97706' },
   };
   const s = map[status];
   return (
     <span style={S.badge(s.color)}>
-      {status === 'running' && <span className="pulse" style={{ width: 5, height: 5, borderRadius: '50%', background: '#34D399', display: 'inline-block' }} />}
+      {status === 'running' && <span className="pulse" style={{ width: 5, height: 5, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />}
       {s.text}
     </span>
   );
@@ -195,14 +196,14 @@ function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompan
       ) : (
         <div
           onDoubleClick={() => setEditing(true)}
-          style={{ fontSize: 14, fontWeight: 500, color: '#E2E8F0', marginBottom: 10, lineHeight: 1.35, wordBreak: 'break-word' }}
+          style={{ fontSize: 14, fontWeight: 500, color: '#0F172A', marginBottom: 10, lineHeight: 1.35, wordBreak: 'break-word' }}
         >
           {task.title}
         </div>
       )}
 
       {/* timer display */}
-      <div className="mono" style={{ fontSize: 13, color: isActive ? '#34D399' : '#94A3B8', marginBottom: 10, fontWeight: 500 }}>
+      <div className="mono" style={{ fontSize: 13, color: isActive ? '#059669' : '#64748B', marginBottom: 10, fontWeight: 500 }}>
         {fmtDuration(total)}
       </div>
 
@@ -212,24 +213,24 @@ function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompan
           <button
             className="btn-hover"
             onClick={onPause}
-            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: 'rgba(251,191,36,0.15)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.3)' }}
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}
           >⏸ Пауза</button>
         ) : (
           <button
             className="btn-hover"
             onClick={onStart}
-            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#D1FAE5', color: '#059669', border: '1px solid #A7F3D0' }}
           >▶ {status === 'paused' ? 'Прод.' : 'Старт'}</button>
         )}
         <button className="btn-hover" onClick={onCycleDept} title="Сменить отдел"
-          style={{ padding: '4px 8px', fontSize: 12, color: dept ? dept.color : '#475569', borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)' }}>◆</button>
+          style={{ padding: '4px 8px', fontSize: 12, color: dept ? dept.color : '#94A3B8', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>◆</button>
         <button className="btn-hover" onClick={onCycleCompany} title="Сменить компанию"
-          style={{ padding: '4px 8px', fontSize: 12, color: company ? company.color : '#475569', borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)' }}>●</button>
+          style={{ padding: '4px 8px', fontSize: 12, color: company ? company.color : '#94A3B8', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>●</button>
         <button className="btn-hover" onClick={onDelete} title="Удалить"
-          style={{ padding: '4px 8px', fontSize: 12, color: '#64748B', borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)', marginLeft: 'auto' }}>×</button>
+          style={{ padding: '4px 8px', fontSize: 12, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF', marginLeft: 'auto' }}>×</button>
       </div>
 
-      <div className="mono" style={{ fontSize: 10, color: '#475569', marginTop: 8 }}>
+      <div className="mono" style={{ fontSize: 10, color: '#94A3B8', marginTop: 8 }}>
         {fmtDate(task.createdAt)}
       </div>
     </div>
@@ -308,20 +309,20 @@ function SummaryBar({ tasks, activeTask, now }) {
   const item = (label, value, color) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <div style={{ fontSize: 10, color: '#64748B', fontWeight: 500, letterSpacing: '0.05em' }}>{label}</div>
-      <div className="mono" style={{ fontSize: 14, color: color || '#E2E8F0', fontWeight: 600 }}>{value}</div>
+      <div className="mono" style={{ fontSize: 14, color: color || '#0F172A', fontWeight: 600 }}>{value}</div>
     </div>
   );
 
   return (
     <div style={{ ...S.card, marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
       {item('ЗАДАЧ', total)}
-      {item('СДЕЛАНО', done, '#34D399')}
+      {item('СДЕЛАНО', done, '#059669')}
       {item('ВРЕМЯ', fmtDuration(totalTime))}
-      {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTime), '#34D399')}
+      {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTime), '#059669')}
       {activeTask && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: 'rgba(52,211,153,0.1)', borderRadius: 6, border: '1px solid rgba(52,211,153,0.2)' }}>
-          <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#34D399' }} />
-          <span style={{ fontSize: 12, color: '#34D399', fontWeight: 500 }}>{activeTask.title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: '#D1FAE5', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+          <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669' }} />
+          <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{activeTask.title}</span>
         </div>
       )}
     </div>
@@ -342,29 +343,29 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
       className={dragOver ? 'drag-over' : ''}
       style={{
         minWidth: 280, width: 280, flexShrink: 0,
-        background: 'rgba(255,255,255,0.015)',
-        border: '1px solid rgba(255,255,255,0.04)',
+        background: '#F1F5F9',
+        border: '1px solid rgba(15,23,42,0.06)',
         borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column',
         transition: 'all 0.15s'
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: `2px solid ${column.color}33` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: `2px solid ${column.color}55` }}>
         <div style={{ width: 8, height: 8, borderRadius: 2, background: column.color }} />
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#CBD5E1', flex: 1 }}>{column.title}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', flex: 1 }}>{column.title}</div>
         <span className="mono" style={{ fontSize: 10, color: '#64748B', fontWeight: 500 }}>
           {totalInColumn !== tasks.length ? `${tasks.length}/${totalInColumn}` : tasks.length}
         </span>
-        <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 500 }}>
+        <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 600 }}>
           Σ {fmtDuration(total)}
         </span>
       </div>
 
       <div style={{ flex: 1, minHeight: 40 }}>
         {tasks.length === 0 && hiddenCount === 0 && (
-          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '20px 0' }}>— пусто —</div>
+          <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>— пусто —</div>
         )}
         {tasks.length === 0 && hiddenCount > 0 && (
-          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '20px 0' }}>{hiddenCount} скрыто</div>
+          <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>{hiddenCount} скрыто</div>
         )}
         {tasks.map(t => (
           <TaskCard
@@ -485,17 +486,17 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
 function BarChart({ title, rows, maxVal }) {
   return (
     <div style={{ ...S.card, flex: 1, minWidth: 280 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#CBD5E1', marginBottom: 14, letterSpacing: '0.02em' }}>{title}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 14, letterSpacing: '0.02em' }}>{title}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {rows.map(r => {
           const pct = maxVal > 0 ? (r.value / maxVal) * 100 : 0;
           return (
             <div key={r.key}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: '#CBD5E1' }}>{r.label}</span>
-                <span className="mono" style={{ fontSize: 12, color: r.color, fontWeight: 500 }}>{fmtHours(r.value)} ч</span>
+                <span style={{ fontSize: 12, color: '#334155' }}>{r.label}</span>
+                <span className="mono" style={{ fontSize: 12, color: r.color, fontWeight: 600 }}>{fmtHours(r.value)} ч</span>
               </div>
-              <div style={{ height: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: 6, background: '#F1F5F9', borderRadius: 3, overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: r.color, borderRadius: 3, transition: 'width 0.3s' }} />
               </div>
             </div>
@@ -612,11 +613,11 @@ function ReportsView({ tasks }) {
       <div style={{ ...S.card, display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500, letterSpacing: '0.05em', marginBottom: 4 }}>ОБЩЕЕ ВРЕМЯ</div>
-          <div className="mono" style={{ fontSize: 28, color: '#E2E8F0', fontWeight: 600 }}>{fmtHours(totalTime)} ч</div>
+          <div className="mono" style={{ fontSize: 28, color: '#0F172A', fontWeight: 600 }}>{fmtHours(totalTime)} ч</div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500, letterSpacing: '0.05em', marginBottom: 4 }}>ЗАДАЧ</div>
-          <div className="mono" style={{ fontSize: 28, color: '#38BDF8', fontWeight: 600 }}>{tasksWithTime.length}</div>
+          <div className="mono" style={{ fontSize: 28, color: '#0284C7', fontWeight: 600 }}>{tasksWithTime.length}</div>
         </div>
       </div>
 
@@ -628,17 +629,17 @@ function ReportsView({ tasks }) {
 
       {/* cross table */}
       <div style={S.card}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#CBD5E1', marginBottom: 14, letterSpacing: '0.02em' }}>НАПРАВЛЕНИЕ × КОМПАНИЯ (ч)</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 14, letterSpacing: '0.02em' }}>НАПРАВЛЕНИЕ × КОМПАНИЯ (ч)</div>
         <div style={{ overflowX: 'auto' }}>
           <table className="mono" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.08)' }}></th>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 500, borderBottom: '1px solid rgba(15,23,42,0.1)' }}></th>
                 {COMPANIES.map(c => (
-                  <th key={c.id} style={{ padding: '8px 12px', color: c.color, fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'right' }}>{c.short}</th>
+                  <th key={c.id} style={{ padding: '8px 12px', color: c.color, fontWeight: 600, borderBottom: '1px solid rgba(15,23,42,0.1)', textAlign: 'right' }}>{c.short}</th>
                 ))}
-                <th style={{ padding: '8px 12px', color: '#94A3B8', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'right' }}>Без</th>
-                <th style={{ padding: '8px 12px', color: '#E2E8F0', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'right' }}>Σ</th>
+                <th style={{ padding: '8px 12px', color: '#94A3B8', fontWeight: 600, borderBottom: '1px solid rgba(15,23,42,0.1)', textAlign: 'right' }}>Без</th>
+                <th style={{ padding: '8px 12px', color: '#0F172A', fontWeight: 600, borderBottom: '1px solid rgba(15,23,42,0.1)', textAlign: 'right' }}>Σ</th>
               </tr>
             </thead>
             <tbody>
@@ -646,22 +647,22 @@ function ReportsView({ tasks }) {
                 const row = cross.matrix[d.id];
                 return (
                   <tr key={d.id}>
-                    <td style={{ padding: '8px 12px', color: d.color, fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{d.name}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.kg)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.kc)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.pf)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#CBD5E1', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.none)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{cellHours(row.total)}</td>
+                    <td style={{ padding: '8px 12px', color: d.color, fontWeight: 500, borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{d.name}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.kg)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.kc)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.pf)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#334155', borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.none)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderBottom: '1px solid rgba(15,23,42,0.05)' }}>{cellHours(row.total)}</td>
                   </tr>
                 );
               })}
               <tr>
-                <td style={{ padding: '8px 12px', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>Σ</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.kg)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.kc)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.pf)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#E2E8F0', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.none)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#38BDF8', fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.08)' }}>{cellHours(cross.colTotals.total)}</td>
+                <td style={{ padding: '8px 12px', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>Σ</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.kg)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.kc)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.pf)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0F172A', fontWeight: 600, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.none)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#0284C7', fontWeight: 700, borderTop: '1px solid rgba(15,23,42,0.1)' }}>{cellHours(cross.colTotals.total)}</td>
               </tr>
             </tbody>
           </table>
@@ -670,19 +671,19 @@ function ReportsView({ tasks }) {
 
       {/* top tasks */}
       <div style={S.card}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#CBD5E1', marginBottom: 14, letterSpacing: '0.02em' }}>ТОП ЗАДАЧ ПО ВРЕМЕНИ (до 15)</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 14, letterSpacing: '0.02em' }}>ТОП ЗАДАЧ ПО ВРЕМЕНИ (до 15)</div>
         {topTasks.length === 0 && <div style={{ fontSize: 12, color: '#64748B' }}>Нет данных за период.</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {topTasks.map((t, i) => {
             const dept = getDept(t.dept);
             const company = getCompany(t.company);
             return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < topTasks.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <span className="mono" style={{ fontSize: 11, color: '#475569', minWidth: 22, fontWeight: 500 }}>{String(i + 1).padStart(2, '0')}</span>
-                <span style={{ fontSize: 13, color: '#E2E8F0', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < topTasks.length - 1 ? '1px solid rgba(15,23,42,0.05)' : 'none' }}>
+                <span className="mono" style={{ fontSize: 11, color: '#94A3B8', minWidth: 22, fontWeight: 500 }}>{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontSize: 13, color: '#0F172A', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
                 {dept && <span style={S.badge(dept.color)}>{dept.name}</span>}
                 {company && <span style={S.badge(company.color)}>{company.short}</span>}
-                <span className="mono" style={{ fontSize: 12, color: '#38BDF8', fontWeight: 600, minWidth: 55, textAlign: 'right' }}>{fmtHours(t.rangeTime)} ч</span>
+                <span className="mono" style={{ fontSize: 12, color: '#0284C7', fontWeight: 600, minWidth: 55, textAlign: 'right' }}>{fmtHours(t.rangeTime)} ч</span>
               </div>
             );
           })}

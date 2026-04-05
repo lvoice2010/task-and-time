@@ -11,8 +11,8 @@
     html, body, #root { height: 100%; }
     body {
       font-family: 'DM Sans', system-ui, sans-serif;
-      background: #0B0E14;
-      color: #E2E8F0;
+      background: #F8FAFC;
+      color: #0F172A;
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
     }
@@ -27,20 +27,20 @@
     /* scrollbars */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+    ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.12); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.22); }
 
     input, button, select { font-family: inherit; color: inherit; }
     button { cursor: pointer; border: none; background: none; }
     input:focus, button:focus { outline: none; }
 
     .card-hover { transition: all 0.15s ease; }
-    .card-hover:hover { background: rgba(255,255,255,0.04) !important; border-color: rgba(255,255,255,0.12) !important; }
+    .card-hover:hover { background: #FFFFFF !important; border-color: rgba(15,23,42,0.14) !important; box-shadow: 0 1px 3px rgba(15,23,42,0.04); }
 
     .btn-hover { transition: all 0.15s ease; }
-    .btn-hover:hover { background: rgba(255,255,255,0.08) !important; }
+    .btn-hover:hover { background: rgba(15,23,42,0.05) !important; }
 
-    .drag-over { background: rgba(56,189,248,0.08) !important; border-color: rgba(56,189,248,0.3) !important; }
+    .drag-over { background: rgba(56,189,248,0.08) !important; border-color: rgba(56,189,248,0.4) !important; }
   </style>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
