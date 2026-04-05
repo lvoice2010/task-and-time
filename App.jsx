@@ -150,22 +150,11 @@ function StatusBadge({ status }) {
   );
 }
 
-function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompany, onDelete, onRename, onDragStart, now }) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(task.title);
+function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompany, onDelete, onOpen, onDragStart, now }) {
   const status = taskStatus(task);
   const total = taskTotal(task, now);
   const dept = getDept(task.dept);
   const company = getCompany(task.company);
-
-  useEffect(() => { setTitle(task.title); }, [task.title]);
-
-  const commitTitle = () => {
-    const v = title.trim();
-    if (v && v !== task.title) onRename(v);
-    else setTitle(task.title);
-    setEditing(false);
-  };
 
   return (
     <div
@@ -182,25 +171,12 @@ function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompan
       </div>
 
       {/* title */}
-      {editing ? (
-        <input
-          autoFocus value={title}
-          onChange={e => setTitle(e.target.value)}
-          onBlur={commitTitle}
-          onKeyDown={e => {
-            if (e.key === 'Enter') commitTitle();
-            if (e.key === 'Escape') { setTitle(task.title); setEditing(false); }
-          }}
-          style={{ ...S.input, padding: '4px 6px', fontSize: 14, marginBottom: 8 }}
-        />
-      ) : (
-        <div
-          onDoubleClick={() => setEditing(true)}
-          style={{ fontSize: 14, fontWeight: 500, color: '#0F172A', marginBottom: 10, lineHeight: 1.35, wordBreak: 'break-word' }}
-        >
-          {task.title}
-        </div>
-      )}
+      <div
+        onClick={onOpen}
+        style={{ fontSize: 14, fontWeight: 500, color: '#0F172A', marginBottom: 10, lineHeight: 1.35, wordBreak: 'break-word', cursor: 'pointer' }}
+      >
+        {task.title}
+      </div>
 
       {/* timer display */}
       <div className="mono" style={{ fontSize: 13, color: isActive ? '#059669' : '#64748B', marginBottom: 10, fontWeight: 500 }}>
@@ -232,6 +208,148 @@ function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompan
 
       <div className="mono" style={{ fontSize: 10, color: '#94A3B8', marginTop: 8 }}>
         {fmtDate(task.createdAt)}
+      </div>
+    </div>
+  );
+}
+
+function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || '');
+  const [estimateHours, setEstimateHours] = useState(task.estimateMinutes ? String(task.estimateMinutes / 60) : '');
+  const [result, setResult] = useState(task.result || '');
+
+  useEffect(() => {
+    setTitle(task.title);
+    setDescription(task.description || '');
+    setEstimateHours(task.estimateMinutes ? String(task.estimateMinutes / 60) : '');
+    setResult(task.result || '');
+  }, [task.id]);
+
+  const startedAt = task.sessions.length > 0 ? Math.min(...task.sessions.map(s => s.start)) : null;
+  const total = taskTotal(task, now);
+  const status = taskStatus(task);
+  const dept = getDept(task.dept);
+  const company = getCompany(task.company);
+
+  const save = () => {
+    const patch = {
+      title: title.trim() || task.title,
+      description,
+      estimateMinutes: estimateHours ? Math.round(parseFloat(estimateHours) * 60) : null,
+      result,
+    };
+    onUpdate(patch);
+    onClose();
+  };
+
+  const fmtDateTime = (ts) => {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const label = (text) => (
+    <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em', marginBottom: 4, textTransform: 'uppercase' }}>{text}</div>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 100 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: '#F1F5F9', borderRadius: 14, padding: 24, width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 40px rgba(15,23,42,0.25)' }}
+      >
+        {/* header */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <StatusBadge status={status} />
+          {dept && <span style={S.badge(dept.color)}>{dept.name}</span>}
+          {company && <span style={S.badge(company.color)}>{company.short}</span>}
+          <button onClick={onClose} className="btn-hover"
+            style={{ marginLeft: 'auto', fontSize: 18, color: '#64748B', padding: '2px 8px', borderRadius: 5 }}>×</button>
+        </div>
+
+        {/* title */}
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Название задачи"
+          style={{ ...S.input, fontSize: 20, fontWeight: 600, padding: '10px 12px', marginBottom: 20 }}
+        />
+
+        {/* description */}
+        <div style={{ marginBottom: 16 }}>
+          {label('Описание')}
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="В чём состоит задача — подробно..."
+            rows={5}
+            style={{ ...S.input, resize: 'vertical', minHeight: 80, fontFamily: 'DM Sans', lineHeight: 1.5 }}
+          />
+        </div>
+
+        {/* meta grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+          <div>
+            {label('Создана')}
+            <div className="mono" style={{ fontSize: 13, color: '#0F172A' }}>{fmtDateTime(task.createdAt)}</div>
+          </div>
+          <div>
+            {label('Займёт (предп.), ч')}
+            <input
+              type="number" step="0.25" min="0"
+              value={estimateHours}
+              onChange={e => setEstimateHours(e.target.value)}
+              placeholder="0"
+              style={{ ...S.input, padding: '6px 10px', fontSize: 13 }}
+            />
+          </div>
+          <div>
+            {label('Начало выполнения')}
+            <div className="mono" style={{ fontSize: 13, color: startedAt ? '#0F172A' : '#94A3B8' }}>{fmtDateTime(startedAt)}</div>
+          </div>
+          <div>
+            {label('Окончание')}
+            <div className="mono" style={{ fontSize: 13, color: task.completedAt ? '#059669' : '#94A3B8' }}>{fmtDateTime(task.completedAt)}</div>
+          </div>
+          <div>
+            {label('Потрачено')}
+            <div className="mono" style={{ fontSize: 13, color: '#0284C7', fontWeight: 600 }}>{fmtDuration(total)}</div>
+          </div>
+        </div>
+
+        {/* result */}
+        <div style={{ marginBottom: 20 }}>
+          {label('Результат')}
+          <textarea
+            value={result}
+            onChange={e => setResult(e.target.value)}
+            placeholder="Что получилось в итоге..."
+            rows={3}
+            style={{ ...S.input, resize: 'vertical', minHeight: 60, fontFamily: 'DM Sans', lineHeight: 1.5 }}
+          />
+        </div>
+
+        {/* actions */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={save} className="btn-hover"
+            style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, borderRadius: 6, background: '#0284C7', color: '#FFFFFF' }}>
+            Сохранить
+          </button>
+          {task.column !== 'done' && (
+            <button onClick={() => { save(); onComplete(); }} className="btn-hover"
+              style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, borderRadius: 6, background: '#D1FAE5', color: '#059669', border: '1px solid #A7F3D0' }}>
+              ✓ Выполнено
+            </button>
+          )}
+          <button onClick={onClose} className="btn-hover"
+            style={{ padding: '9px 18px', fontSize: 13, fontWeight: 500, borderRadius: 6, color: '#64748B', border: '1px solid rgba(15,23,42,0.12)', marginLeft: 'auto' }}>
+            Отмена
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -329,7 +447,7 @@ function SummaryBar({ tasks, activeTask, now }) {
   );
 }
 
-function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart, onAddTask }) {
+function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart, onAddTask, onOpenTask }) {
   const [dragOver, setDragOver] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -378,7 +496,7 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
             onCycleDept={() => onTaskAction('cycleDept', t.id)}
             onCycleCompany={() => onTaskAction('cycleCompany', t.id)}
             onDelete={() => onTaskAction('delete', t.id)}
-            onRename={(v) => onTaskAction('rename', t.id, v)}
+            onOpen={() => onOpenTask(t.id)}
           />
         ))}
       </div>
@@ -436,14 +554,32 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     draggedId.current = null;
   };
 
+  const [openTaskId, setOpenTaskId] = useState(null);
+
   const addTask = (title, dept, company, column = 'today') => {
     setTasks(prev => [...prev, {
       id: newId(), title, column, dept, company,
-      sessions: [], createdAt: Date.now()
+      sessions: [], createdAt: Date.now(),
+      description: '', estimateMinutes: null, completedAt: null, result: ''
     }]);
   };
 
   const addTaskToColumn = (columnId, title) => addTask(title, null, null, columnId);
+
+  const updateTask = (id, patch) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  };
+
+  const completeTask = (id) => {
+    const nowTs = Date.now();
+    setTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      // close any active session
+      const sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
+      return { ...t, sessions, column: 'done', completedAt: nowTs };
+    }));
+    if (activeId === id) setActiveId(null);
+  };
 
   const cycleValue = (cur, list) => {
     if (cur == null) return list[0];
@@ -512,9 +648,19 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
             onDragStart={onDragStart}
             onTaskAction={handleTaskAction}
             onAddTask={addTaskToColumn}
+            onOpenTask={setOpenTaskId}
           />
         ))}
       </div>
+      {openTaskId && tasks.find(t => t.id === openTaskId) && (
+        <TaskModal
+          task={tasks.find(t => t.id === openTaskId)}
+          now={now}
+          onClose={() => setOpenTaskId(null)}
+          onUpdate={(patch) => updateTask(openTaskId, patch)}
+          onComplete={() => { completeTask(openTaskId); setOpenTaskId(null); }}
+        />
+      )}
     </div>
   );
 }
