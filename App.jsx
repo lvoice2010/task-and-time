@@ -164,7 +164,11 @@ function TaskCard({ task, isActive, onStart, onPause, onOpen, onDragStart, now }
       draggable
       onDragStart={(e) => onDragStart(e, task.id)}
       className="card-hover"
-      style={{ ...S.card, cursor: 'grab', marginBottom: 8 }}
+      style={{
+        ...S.card, cursor: 'grab', marginBottom: 8,
+        background: company ? `${company.color}14` : '#FFFFFF',
+        borderLeft: company ? `3px solid ${company.color}` : S.card.border,
+      }}
     >
       {/* tags row */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
