@@ -1349,7 +1349,7 @@ function GoalCard({ goal, onUpdate }) {
   );
 }
 
-function GoalHeaderRow({ goal, isFirst, totalCols, onUpdate }) {
+function GoalHeaderRow({ goal, isFirst, dayCount, onUpdate }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(goal.currentValue || '');
   const pct = computeProgress(goal.startValue, goal.targetValue, goal.currentValue);
@@ -1357,13 +1357,22 @@ function GoalHeaderRow({ goal, isFirst, totalCols, onUpdate }) {
   const progressColor = pct != null && pct >= 85 ? '#059669' : pct != null && pct >= 50 ? '#0284C7' : '#CA8A04';
   const save = () => { onUpdate(goal.id, { currentValue: val }); setEditing(false); };
   const topBorder = isFirst ? 'none' : '4px solid rgba(15,23,42,0.2)';
+  const bg = '#EFF6FF';
   return (
     <tr>
-      <td colSpan={totalCols} style={{ padding: 0, borderTop: topBorder, background: '#EFF6FF' }}>
-        <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <span className="mono" style={{ fontSize: 12, color: '#0284C7', fontWeight: 700, minWidth: 28 }}>#{goal.number}</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', minWidth: 160 }}>{goal.title || 'Без названия'}</span>
+      <td colSpan={3} style={{
+        position: 'sticky', left: 0, zIndex: 3,
+        padding: 0, borderTop: topBorder, background: bg,
+        boxShadow: '2px 0 4px rgba(15,23,42,0.05)'
+      }}>
+        <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="mono" style={{ fontSize: 12, color: '#0284C7', fontWeight: 700 }}>#{goal.number}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{goal.title || 'Без названия'}</span>
           {company && <span style={S.badge(company.color)}>{company.short}</span>}
+        </div>
+      </td>
+      <td colSpan={dayCount + 1} style={{ padding: 0, borderTop: topBorder, background: bg }}>
+        <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span className="mono" style={{ fontSize: 11, color: '#475569', display: 'flex', gap: 6 }}>
             <span>Старт: <b style={{ color: '#0F172A' }}>{goal.startValue || '—'}</b></span>
             <span style={{ color: '#94A3B8' }}>→</span>
@@ -1372,7 +1381,7 @@ function GoalHeaderRow({ goal, isFirst, totalCols, onUpdate }) {
             <span>Сейчас: <b style={{ color: progressColor }}>{goal.currentValue || '—'}</b></span>
           </span>
           {pct != null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 260 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 280 }}>
               <div style={{ flex: 1, height: 6, background: '#DBEAFE', borderRadius: 3, overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: progressColor, borderRadius: 3 }} />
               </div>
@@ -1392,7 +1401,7 @@ function GoalHeaderRow({ goal, isFirst, totalCols, onUpdate }) {
             </div>
           ) : (
             <button onClick={() => { setVal(goal.currentValue || ''); setEditing(true); }} className="btn-hover"
-              style={{ padding: '4px 10px', fontSize: 11, fontWeight: 500, borderRadius: 4, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF', marginLeft: 'auto' }}>
+              style={{ padding: '4px 10px', fontSize: 11, fontWeight: 500, borderRadius: 4, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
               Обновить
             </button>
           )}
@@ -1532,7 +1541,7 @@ function TrackingTable({ plan, onToggleCell, tasks, onUpdateGoal }) {
           <tbody>
             {plan.goals.filter(g => g.tactics.length > 0).map((goal, gIdx) => (
               <React.Fragment key={goal.id}>
-                <GoalHeaderRow goal={goal} isFirst={gIdx === 0} totalCols={3 + TOTAL_DAYS + 1} onUpdate={onUpdateGoal} />
+                <GoalHeaderRow goal={goal} isFirst={gIdx === 0} dayCount={TOTAL_DAYS} onUpdate={onUpdateGoal} />
                 {goal.tactics.map((tactic, tIdx) => {
                   const isFirst = tIdx === 0;
                   const topBorder = 'none';
