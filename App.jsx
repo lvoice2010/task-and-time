@@ -150,7 +150,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompany, onDelete, onOpen, onDragStart, now }) {
+function TaskCard({ task, isActive, onStart, onPause, onDelete, onOpen, onDragStart, now }) {
   const status = taskStatus(task);
   const total = taskTotal(task, now);
   const dept = getDept(task.dept);
@@ -198,10 +198,6 @@ function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompan
             style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#D1FAE5', color: '#059669', border: '1px solid #A7F3D0' }}
           >▶ {status === 'paused' ? 'Прод.' : 'Старт'}</button>
         )}
-        <button className="btn-hover" onClick={onCycleDept} title="Сменить отдел"
-          style={{ padding: '4px 8px', fontSize: 12, color: dept ? dept.color : '#94A3B8', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>◆</button>
-        <button className="btn-hover" onClick={onCycleCompany} title="Сменить компанию"
-          style={{ padding: '4px 8px', fontSize: 12, color: company ? company.color : '#94A3B8', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>●</button>
         <button className="btn-hover" onClick={onDelete} title="Удалить"
           style={{ padding: '4px 8px', fontSize: 12, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF', marginLeft: 'auto' }}>×</button>
       </div>
@@ -213,31 +209,102 @@ function TaskCard({ task, isActive, onStart, onPause, onCycleDept, onCycleCompan
   );
 }
 
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+const fmtFileSize = (bytes) => {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
+};
+
+function FileAttach({ files, onChange }) {
+  const inputRef = useRef(null);
+
+  const handleSelect = async (e) => {
+    const picked = Array.from(e.target.files || []);
+    const accepted = [];
+    for (const f of picked) {
+      if (f.size > MAX_FILE_SIZE) {
+        alert(`Файл "${f.name}" слишком большой (${fmtFileSize(f.size)}). Максимум 2 МБ.`);
+        continue;
+      }
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+      accepted.push({ id: newId(), name: f.name, type: f.type, size: f.size, dataUrl });
+    }
+    if (accepted.length) onChange([...files, ...accepted]);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const removeFile = (id) => onChange(files.filter(f => f.id !== id));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: files.length > 0 ? 6 : 0 }}>
+        {files.map(f => (
+          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.08)', borderRadius: 6 }}>
+            <span style={{ fontSize: 14 }}>📎</span>
+            <a href={f.dataUrl} download={f.name} style={{ fontSize: 12, color: '#0284C7', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}>{f.name}</a>
+            <span className="mono" style={{ fontSize: 10, color: '#94A3B8' }}>{fmtFileSize(f.size)}</span>
+            <button onClick={() => removeFile(f.id)} className="btn-hover"
+              style={{ fontSize: 12, color: '#64748B', padding: '2px 6px', borderRadius: 4 }}>×</button>
+          </div>
+        ))}
+      </div>
+      <input ref={inputRef} type="file" multiple onChange={handleSelect} style={{ display: 'none' }} />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="btn-hover"
+        style={{ padding: '6px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px dashed rgba(15,23,42,0.2)', background: '#FFFFFF' }}
+      >+ Прикрепить файл</button>
+    </div>
+  );
+}
+
 function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
-  const [estimateHours, setEstimateHours] = useState(task.estimateMinutes ? String(task.estimateMinutes / 60) : '');
+  const [estHours, setEstHours] = useState(task.estimateMinutes ? String(Math.floor(task.estimateMinutes / 60)) : '');
+  const [estMins, setEstMins] = useState(task.estimateMinutes ? String(task.estimateMinutes % 60) : '');
   const [result, setResult] = useState(task.result || '');
+  const [descriptionFiles, setDescriptionFiles] = useState(task.descriptionFiles || []);
+  const [resultFiles, setResultFiles] = useState(task.resultFiles || []);
+  const [dept, setDept] = useState(task.dept);
+  const [company, setCompany] = useState(task.company);
 
   useEffect(() => {
     setTitle(task.title);
     setDescription(task.description || '');
-    setEstimateHours(task.estimateMinutes ? String(task.estimateMinutes / 60) : '');
+    setEstHours(task.estimateMinutes ? String(Math.floor(task.estimateMinutes / 60)) : '');
+    setEstMins(task.estimateMinutes ? String(task.estimateMinutes % 60) : '');
     setResult(task.result || '');
+    setDescriptionFiles(task.descriptionFiles || []);
+    setResultFiles(task.resultFiles || []);
+    setDept(task.dept);
+    setCompany(task.company);
   }, [task.id]);
 
   const startedAt = task.sessions.length > 0 ? Math.min(...task.sessions.map(s => s.start)) : null;
   const total = taskTotal(task, now);
   const status = taskStatus(task);
-  const dept = getDept(task.dept);
-  const company = getCompany(task.company);
-
   const save = () => {
+    const h = parseInt(estHours, 10) || 0;
+    const m = parseInt(estMins, 10) || 0;
+    const mins = h * 60 + m;
     const patch = {
       title: title.trim() || task.title,
       description,
-      estimateMinutes: estimateHours ? Math.round(parseFloat(estimateHours) * 60) : null,
+      estimateMinutes: mins > 0 ? mins : null,
       result,
+      descriptionFiles,
+      resultFiles,
+      dept,
+      company,
     };
     onUpdate(patch);
     onClose();
@@ -265,8 +332,6 @@ function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
         {/* header */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
           <StatusBadge status={status} />
-          {dept && <span style={S.badge(dept.color)}>{dept.name}</span>}
-          {company && <span style={S.badge(company.color)}>{company.short}</span>}
           <button onClick={onClose} className="btn-hover"
             style={{ marginLeft: 'auto', fontSize: 18, color: '#64748B', padding: '2px 8px', borderRadius: 5 }}>×</button>
         </div>
@@ -276,8 +341,28 @@ function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="Название задачи"
-          style={{ ...S.input, fontSize: 20, fontWeight: 600, padding: '10px 12px', marginBottom: 20 }}
+          style={{ ...S.input, fontSize: 20, fontWeight: 600, padding: '10px 12px', marginBottom: 16 }}
         />
+
+        {/* dept + company chips */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+          <div>
+            {label('Отдел')}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {DEPTS.map(d => (
+                <button key={d.id} onClick={() => setDept(dept === d.id ? null : d.id)} style={S.chip(dept === d.id, d.color)}>{d.name}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            {label('Компания')}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {COMPANIES.map(c => (
+                <button key={c.id} onClick={() => setCompany(company === c.id ? null : c.id)} style={S.chip(company === c.id, c.color)}>{c.name}</button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* description */}
         <div style={{ marginBottom: 16 }}>
@@ -287,8 +372,9 @@ function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
             onChange={e => setDescription(e.target.value)}
             placeholder="В чём состоит задача — подробно..."
             rows={5}
-            style={{ ...S.input, resize: 'vertical', minHeight: 80, fontFamily: 'DM Sans', lineHeight: 1.5 }}
+            style={{ ...S.input, resize: 'vertical', minHeight: 80, fontFamily: 'DM Sans', lineHeight: 1.5, marginBottom: 8 }}
           />
+          <FileAttach files={descriptionFiles} onChange={setDescriptionFiles} />
         </div>
 
         {/* meta grid */}
@@ -298,14 +384,25 @@ function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
             <div className="mono" style={{ fontSize: 13, color: '#0F172A' }}>{fmtDateTime(task.createdAt)}</div>
           </div>
           <div>
-            {label('Займёт (предп.), ч')}
-            <input
-              type="number" step="0.25" min="0"
-              value={estimateHours}
-              onChange={e => setEstimateHours(e.target.value)}
-              placeholder="0"
-              style={{ ...S.input, padding: '6px 10px', fontSize: 13 }}
-            />
+            {label('Займёт (предп.)')}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="number" min="0"
+                value={estHours}
+                onChange={e => setEstHours(e.target.value)}
+                placeholder="0"
+                style={{ ...S.input, padding: '6px 10px', fontSize: 13, width: 60 }}
+              />
+              <span style={{ fontSize: 11, color: '#64748B' }}>ч</span>
+              <input
+                type="number" min="0" max="59"
+                value={estMins}
+                onChange={e => setEstMins(e.target.value)}
+                placeholder="0"
+                style={{ ...S.input, padding: '6px 10px', fontSize: 13, width: 60 }}
+              />
+              <span style={{ fontSize: 11, color: '#64748B' }}>мин</span>
+            </div>
           </div>
           <div>
             {label('Начало выполнения')}
@@ -329,8 +426,9 @@ function TaskModal({ task, onClose, onUpdate, onComplete, now }) {
             onChange={e => setResult(e.target.value)}
             placeholder="Что получилось в итоге..."
             rows={3}
-            style={{ ...S.input, resize: 'vertical', minHeight: 60, fontFamily: 'DM Sans', lineHeight: 1.5 }}
+            style={{ ...S.input, resize: 'vertical', minHeight: 60, fontFamily: 'DM Sans', lineHeight: 1.5, marginBottom: 8 }}
           />
+          <FileAttach files={resultFiles} onChange={setResultFiles} />
         </div>
 
         {/* actions */}
@@ -493,8 +591,6 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
             onDragStart={onDragStart}
             onStart={() => onTaskAction('start', t.id)}
             onPause={() => onTaskAction('pause', t.id)}
-            onCycleDept={() => onTaskAction('cycleDept', t.id)}
-            onCycleCompany={() => onTaskAction('cycleCompany', t.id)}
             onDelete={() => onTaskAction('delete', t.id)}
             onOpen={() => onOpenTask(t.id)}
           />
@@ -560,7 +656,8 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     setTasks(prev => [...prev, {
       id: newId(), title, column, dept, company,
       sessions: [], createdAt: Date.now(),
-      description: '', estimateMinutes: null, completedAt: null, result: ''
+      description: '', estimateMinutes: null, completedAt: null, result: '',
+      descriptionFiles: [], resultFiles: []
     }]);
   };
 
