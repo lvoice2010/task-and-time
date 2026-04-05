@@ -329,8 +329,10 @@ function SummaryBar({ tasks, activeTask, now }) {
   );
 }
 
-function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart }) {
+function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart, onAddTask }) {
   const [dragOver, setDragOver] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
   const total = tasks.reduce((s, t) => s + taskTotal(t, now), 0);
   const totalInColumn = allTasks.filter(t => t.column === column.id).length;
   const hiddenCount = totalInColumn - tasks.length;
@@ -380,6 +382,39 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
           />
         ))}
       </div>
+
+      {adding ? (
+        <input
+          autoFocus value={newTitle}
+          onChange={e => setNewTitle(e.target.value)}
+          onBlur={() => {
+            const v = newTitle.trim();
+            if (v) onAddTask(column.id, v);
+            setNewTitle(''); setAdding(false);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              const v = newTitle.trim();
+              if (v) { onAddTask(column.id, v); setNewTitle(''); }
+              else setAdding(false);
+            }
+            if (e.key === 'Escape') { setNewTitle(''); setAdding(false); }
+          }}
+          placeholder="Название задачи..."
+          style={{ ...S.input, marginTop: 4 }}
+        />
+      ) : (
+        <button
+          className="btn-hover"
+          onClick={() => setAdding(true)}
+          style={{
+            marginTop: 4, padding: '8px 10px', fontSize: 12, fontWeight: 500,
+            color: '#64748B', textAlign: 'left', borderRadius: 6,
+            border: '1px dashed rgba(15,23,42,0.15)', background: 'transparent',
+            width: '100%'
+          }}
+        >+ Создать задачу</button>
+      )}
     </div>
   );
 }
@@ -401,12 +436,14 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     draggedId.current = null;
   };
 
-  const addTask = (title, dept, company) => {
+  const addTask = (title, dept, company, column = 'today') => {
     setTasks(prev => [...prev, {
-      id: newId(), title, column: 'today', dept, company,
+      id: newId(), title, column, dept, company,
       sessions: [], createdAt: Date.now()
     }]);
   };
+
+  const addTaskToColumn = (columnId, title) => addTask(title, null, null, columnId);
 
   const cycleValue = (cur, list) => {
     if (cur == null) return list[0];
@@ -474,6 +511,7 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
             onDrop={handleDrop}
             onDragStart={onDragStart}
             onTaskAction={handleTaskAction}
+            onAddTask={addTaskToColumn}
           />
         ))}
       </div>
