@@ -1021,6 +1021,32 @@ const computeProgress = (start, target, current) => {
   return Math.max(0, Math.min(100, pct));
 };
 
+// compute minutes tracked on tasks matching dept/company filters on a given ISO day
+const minutesOnDay = (tasks, iso, deptFilter, companyFilter) => {
+  const dayStart = parseISODate(iso).getTime();
+  const dayEnd = dayStart + 86400000;
+  let totalMs = 0;
+  for (const t of tasks) {
+    if (deptFilter && t.dept !== deptFilter) continue;
+    if (companyFilter && t.company !== companyFilter) continue;
+    totalMs += taskTotalInRange(t, dayStart, dayEnd);
+  }
+  return Math.floor(totalMs / 60000);
+};
+
+// effective cell value: manual entry wins, else auto if tactic has autoMinutes+filters
+const getEffectiveCell = (tactic, iso, tasks) => {
+  const manual = tactic.completions[iso];
+  if (manual === true || manual === false) return { value: manual, isAuto: false };
+  const need = tactic.autoMinutes;
+  if (need && need > 0) {
+    const got = minutesOnDay(tasks, iso, tactic.autoDept, tactic.autoCompany);
+    if (got >= need) return { value: true, isAuto: true, got, need };
+    return { value: null, isAuto: true, got, need };
+  }
+  return { value: null, isAuto: false };
+};
+
 function ProgressBar({ value, color = '#0284C7' }) {
   return (
     <div style={{ height: 8, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
@@ -1077,7 +1103,7 @@ function GoalCard({ goal, onUpdate }) {
   );
 }
 
-function TrackingTable({ plan, onToggleCell }) {
+function TrackingTable({ plan, onToggleCell, tasks }) {
   const today = todayISO();
   const days = useMemo(() => {
     const arr = [];
@@ -1109,7 +1135,8 @@ function TrackingTable({ plan, onToggleCell }) {
           goal.tactics.forEach(t => {
             if (t.frequency === 'weekday' && weekend) return;
             expected += 1;
-            if (t.completions[iso] === true) completed += 1;
+            const eff = getEffectiveCell(t, iso, tasks);
+            if (eff.value === true) completed += 1;
           });
         });
       }
@@ -1117,7 +1144,7 @@ function TrackingTable({ plan, onToggleCell }) {
       totals.push({ completed, expected, pct });
     }
     return totals;
-  }, [plan, days, today]);
+  }, [plan, days, today, tasks]);
 
   const weekColor = (pct) => {
     if (pct == null) return '#94A3B8';
@@ -1194,9 +1221,10 @@ function TrackingTable({ plan, onToggleCell }) {
                   const isToday = iso === today;
                   const isFuture = iso > today;
                   const weekStart = i % 7 === 0;
-                  const val = tactic.completions[iso];
+                  const manualVal = tactic.completions[iso];
                   const blockedWeekend = tactic.frequency === 'weekday' && weekend;
                   const clickable = !isFuture && !blockedWeekend;
+                  const eff = isFuture ? { value: null, isAuto: false } : getEffectiveCell(tactic, iso, tasks);
 
                   let bg = '#FFFFFF';
                   let content = '';
@@ -1205,14 +1233,20 @@ function TrackingTable({ plan, onToggleCell }) {
                   else if (blockedWeekend) bg = '#E5E7EB';
                   else if (weekend) bg = '#F8FAFC';
 
-                  if (val === true) { content = '✓'; color = '#059669'; bg = '#D1FAE5'; }
-                  else if (val === false) { content = '✗'; color = '#DC2626'; bg = '#FEE2E2'; }
+                  if (manualVal === true) { content = '✓'; color = '#059669'; bg = '#D1FAE5'; }
+                  else if (manualVal === false) { content = '✗'; color = '#DC2626'; bg = '#FEE2E2'; }
+                  else if (eff.isAuto && eff.value === true) { content = '✓'; color = '#059669'; bg = '#ECFDF5'; }
 
+                  const isAutoMark = manualVal == null && eff.isAuto && eff.value === true;
                   const border = isToday ? '2px solid #F59E0B' : (weekStart ? '2px solid rgba(15,23,42,0.15)' : '1px solid rgba(15,23,42,0.04)');
+                  const titleAttr = tactic.autoMinutes && !isFuture && !blockedWeekend
+                    ? `Набрано ${eff.got || 0} мин из ${tactic.autoMinutes} мин нужно${isAutoMark ? ' (авто)' : ''}`
+                    : undefined;
 
                   return (
                     <td key={iso}
-                      onClick={clickable ? () => onToggleCell(goal.id, tactic.id, iso, cycleCell(val)) : undefined}
+                      onClick={clickable ? () => onToggleCell(goal.id, tactic.id, iso, cycleCell(manualVal)) : undefined}
+                      title={titleAttr}
                       style={{
                         width: cellSize, height: cellSize, padding: 0, textAlign: 'center',
                         borderBottom: '1px solid rgba(15,23,42,0.04)',
@@ -1220,6 +1254,7 @@ function TrackingTable({ plan, onToggleCell }) {
                         background: bg, color, fontWeight: 700, fontSize: 13,
                         cursor: clickable ? 'pointer' : 'default',
                         userSelect: 'none',
+                        opacity: isAutoMark ? 0.7 : 1,
                       }}
                     >
                       {content}
@@ -1371,16 +1406,38 @@ function PlanSettings({ plan, onSave, onCancel, onDelete }) {
           <div style={{ borderTop: '1px solid rgba(15,23,42,0.06)', paddingTop: 10 }}>
             {label('Тактики')}
             {goal.tactics.map(t => (
-              <div key={t.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input value={t.title} onChange={e => updateTactic(goal.id, t.id, { title: e.target.value })}
-                  placeholder="Название тактики (например, Зарядка)"
-                  style={{ ...S.input, padding: '6px 10px', fontSize: 13, flex: 1, minWidth: 200 }} />
-                <button onClick={() => updateTactic(goal.id, t.id, { frequency: t.frequency === 'daily' ? 'weekday' : 'daily' })} className="btn-hover"
-                  style={{ padding: '6px 10px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF', fontFamily: 'JetBrains Mono' }}>
-                  {t.frequency === 'daily' ? '7/7 ежедневно' : '5/7 по будням'}
-                </button>
-                <button onClick={() => removeTactic(goal.id, t.id)} className="btn-hover"
-                  style={{ padding: '6px 10px', fontSize: 11, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>×</button>
+              <div key={t.id} style={{ marginBottom: 10, padding: 8, background: '#F8FAFC', borderRadius: 6, border: '1px solid rgba(15,23,42,0.05)' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                  <input value={t.title} onChange={e => updateTactic(goal.id, t.id, { title: e.target.value })}
+                    placeholder="Название тактики (например, Зарядка)"
+                    style={{ ...S.input, padding: '6px 10px', fontSize: 13, flex: 1, minWidth: 200 }} />
+                  <button onClick={() => updateTactic(goal.id, t.id, { frequency: t.frequency === 'daily' ? 'weekday' : 'daily' })} className="btn-hover"
+                    style={{ padding: '6px 10px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF', fontFamily: 'JetBrains Mono' }}>
+                    {t.frequency === 'daily' ? '7/7 ежедневно' : '5/7 по будням'}
+                  </button>
+                  <button onClick={() => removeTactic(goal.id, t.id)} className="btn-hover"
+                    style={{ padding: '6px 10px', fontSize: 11, color: '#64748B', borderRadius: 5, border: '1px solid rgba(15,23,42,0.1)', background: '#FFFFFF' }}>×</button>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 11 }}>
+                  <span style={{ color: '#64748B', fontWeight: 600, letterSpacing: '0.03em' }}>АВТО ✓ ЕСЛИ:</span>
+                  <input
+                    type="number" min="0"
+                    value={t.autoMinutes || ''}
+                    onChange={e => updateTactic(goal.id, t.id, { autoMinutes: e.target.value ? parseInt(e.target.value, 10) : null })}
+                    placeholder="0"
+                    style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 60 }} />
+                  <span style={{ color: '#64748B' }}>мин на задачах</span>
+                  <select value={t.autoDept || ''} onChange={e => updateTactic(goal.id, t.id, { autoDept: e.target.value || null })}
+                    style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 'auto' }}>
+                    <option value="">любой отдел</option>
+                    {DEPTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <select value={t.autoCompany || ''} onChange={e => updateTactic(goal.id, t.id, { autoCompany: e.target.value || null })}
+                    style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 'auto' }}>
+                    <option value="">любая компания</option>
+                    {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
               </div>
             ))}
             <button onClick={() => addTactic(goal.id)} className="btn-hover"
@@ -1416,7 +1473,7 @@ function PlanSettings({ plan, onSave, onCancel, onDelete }) {
   );
 }
 
-function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId }) {
+function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId, tasks }) {
   const [settingsMode, setSettingsMode] = useState(false);
 
   const activePlan = plans.find(p => p.id === activePlanId) || null;
@@ -1551,7 +1608,7 @@ function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId }) {
               <GoalCard key={g.id} goal={g} onUpdate={(patch) => updateGoal(g.id, patch)} />
             ))}
           </div>
-          <TrackingTable plan={activePlan} onToggleCell={toggleCell} />
+          <TrackingTable plan={activePlan} onToggleCell={toggleCell} tasks={tasks} />
         </>
       )}
     </div>
@@ -1649,7 +1706,7 @@ function App() {
         )}
         {tab === 'reports' && <ReportsView tasks={tasks} />}
         {tab === 'weekplan' && (
-          <WeekPlanView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} />
+          <WeekPlanView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} tasks={tasks} />
         )}
       </div>
     </div>
