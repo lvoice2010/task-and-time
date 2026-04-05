@@ -1349,7 +1349,60 @@ function GoalCard({ goal, onUpdate }) {
   );
 }
 
-function TrackingTable({ plan, onToggleCell, tasks }) {
+function GoalHeaderRow({ goal, isFirst, totalCols, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(goal.currentValue || '');
+  const pct = computeProgress(goal.startValue, goal.targetValue, goal.currentValue);
+  const company = getCompany(goal.company);
+  const progressColor = pct != null && pct >= 85 ? '#059669' : pct != null && pct >= 50 ? '#0284C7' : '#CA8A04';
+  const save = () => { onUpdate(goal.id, { currentValue: val }); setEditing(false); };
+  const topBorder = isFirst ? 'none' : '4px solid rgba(15,23,42,0.2)';
+  return (
+    <tr>
+      <td colSpan={totalCols} style={{ padding: 0, borderTop: topBorder, background: '#EFF6FF' }}>
+        <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <span className="mono" style={{ fontSize: 12, color: '#0284C7', fontWeight: 700, minWidth: 28 }}>#{goal.number}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', minWidth: 160 }}>{goal.title || 'Без названия'}</span>
+          {company && <span style={S.badge(company.color)}>{company.short}</span>}
+          <span className="mono" style={{ fontSize: 11, color: '#475569', display: 'flex', gap: 6 }}>
+            <span>Старт: <b style={{ color: '#0F172A' }}>{goal.startValue || '—'}</b></span>
+            <span style={{ color: '#94A3B8' }}>→</span>
+            <span>Цель: <b style={{ color: '#0F172A' }}>{goal.targetValue || '—'}</b></span>
+            <span style={{ color: '#94A3B8' }}>→</span>
+            <span>Сейчас: <b style={{ color: progressColor }}>{goal.currentValue || '—'}</b></span>
+          </span>
+          {pct != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 260 }}>
+              <div style={{ flex: 1, height: 6, background: '#DBEAFE', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: progressColor, borderRadius: 3 }} />
+              </div>
+              <span className="mono" style={{ fontSize: 11, color: progressColor, fontWeight: 600, minWidth: 42, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
+            </div>
+          )}
+          {editing ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input autoFocus value={val} onChange={e => setVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+                placeholder="Новое значение"
+                style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 120 }} />
+              <button onClick={save} className="btn-hover"
+                style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 4, background: '#0284C7', color: '#FFFFFF' }}>OK</button>
+              <button onClick={() => setEditing(false)} className="btn-hover"
+                style={{ padding: '4px 8px', fontSize: 11, color: '#64748B', borderRadius: 4, border: '1px solid rgba(15,23,42,0.12)' }}>×</button>
+            </div>
+          ) : (
+            <button onClick={() => { setVal(goal.currentValue || ''); setEditing(true); }} className="btn-hover"
+              style={{ padding: '4px 10px', fontSize: 11, fontWeight: 500, borderRadius: 4, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF', marginLeft: 'auto' }}>
+              Обновить
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function TrackingTable({ plan, onToggleCell, tasks, onUpdateGoal }) {
   const today = todayISO();
   const days = useMemo(() => {
     const arr = [];
@@ -1363,6 +1416,20 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
     if (current === true) return false; // ✓ → ✗
     if (current === false) return null; // ✗ → empty
     return true; // empty → ✓
+  };
+
+  // per-tactic total completion %
+  const tacticPct = (tactic) => {
+    let completed = 0, expected = 0;
+    days.forEach(iso => {
+      const nonWork = isNonWorkingDay(iso);
+      if (tactic.frequency === 'weekday' && nonWork) return;
+      if (iso > today) return;
+      expected++;
+      const eff = getEffectiveCell(tactic, iso, tasks);
+      if (eff.value === true) completed++;
+    });
+    return expected > 0 ? (completed / expected) * 100 : null;
   };
 
   const weekTotals = useMemo(() => {
@@ -1417,12 +1484,13 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
   return (
     <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
-        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed', width: 34 + 220 + 240 + cellSize * TOTAL_DAYS }}>
+        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed', width: 34 + 220 + 240 + cellSize * TOTAL_DAYS + 70 }}>
           <colgroup>
             <col style={{ width: 34 }} />
             <col style={{ width: 220 }} />
             <col style={{ width: 240 }} />
             {days.map(iso => <col key={iso} style={{ width: cellSize }} />)}
+            <col style={{ width: 70 }} />
           </colgroup>
           <thead>
             <tr>
@@ -1452,19 +1520,30 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                   </th>
                 );
               })}
+              <th style={{
+                borderBottom: '1px solid rgba(15,23,42,0.1)',
+                borderLeft: '3px solid rgba(15,23,42,0.2)',
+                background: '#F1F5F9',
+                fontSize: 9, fontWeight: 700, color: '#334155',
+                padding: 6
+              }}>ИТОГО %</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ goal, tactic, isFirst, tacticCount }, rIdx) => {
-              const topBorder = isFirst && rIdx > 0 ? '3px solid rgba(15,23,42,0.2)' : 'none';
-              const goalBg = isFirst ? '#E2E8F0' : stickyBg;
-              return (
+            {plan.goals.filter(g => g.tactics.length > 0).map((goal, gIdx) => (
+              <React.Fragment key={goal.id}>
+                <GoalHeaderRow goal={goal} isFirst={gIdx === 0} totalCols={3 + TOTAL_DAYS + 1} onUpdate={onUpdateGoal} />
+                {goal.tactics.map((tactic, tIdx) => {
+                  const isFirst = tIdx === 0;
+                  const topBorder = 'none';
+                  const goalBg = stickyBg;
+                  return (
               <tr key={`${goal.id}-${tactic.id}`}>
                 <td style={{ ...stickyStyle, background: goalBg, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, textAlign: 'center', fontWeight: 700, color: '#334155' }}>
-                  {isFirst ? goal.number : ''}
+
                 </td>
-                <td style={{ ...stickyStyle, background: goalBg, left: 34, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontWeight: isFirst ? 700 : 400, fontSize: 12, fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={isFirst ? goal.title : ''}>
-                  {isFirst ? goal.title : ''}
+                <td style={{ ...stickyStyle, background: goalBg, left: 34, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontSize: 12, fontFamily: 'DM Sans' }}>
+
                 </td>
                 <td style={{ ...stickyStyle, left: 254, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 12, fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={tactic.title}>
                   {tactic.title}
@@ -1518,25 +1597,26 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                     </td>
                   );
                 })}
+                {/* Итого % колонка */}
+                {(() => {
+                  const pct = tacticPct(tactic);
+                  const color = pct == null ? '#94A3B8' : (pct >= 85 ? '#059669' : (pct >= 60 ? '#CA8A04' : '#DC2626'));
+                  return (
+                    <td style={{
+                      borderBottom: '1px solid rgba(15,23,42,0.04)',
+                      borderTop: topBorder,
+                      borderLeft: '3px solid rgba(15,23,42,0.2)',
+                      background: pct != null ? `${color}18` : '#F8FAFC',
+                      color, fontWeight: 700, fontSize: 12, textAlign: 'center', padding: '0 6px'
+                    }}>
+                      {pct != null ? `${pct.toFixed(0)}%` : '—'}
+                    </td>
+                  );
+                })()}
               </tr>
             );})}
-            {/* Week totals row */}
-            <tr>
-              <td colSpan={3} style={{ ...stickyStyle, left: 0, padding: '8px 6px', borderTop: '2px solid rgba(15,23,42,0.1)', color: '#64748B', fontWeight: 600, textAlign: 'right', fontSize: 10, fontFamily: 'DM Sans' }}>
-                ИТОГО ПО НЕДЕЛЕ
-              </td>
-              {weekTotals.map((wt, w) => (
-                <td key={w} colSpan={7} style={{
-                  borderTop: '2px solid rgba(15,23,42,0.1)',
-                  borderLeft: '2px solid rgba(15,23,42,0.15)',
-                  padding: '8px 4px', textAlign: 'center',
-                  background: wt.pct != null ? `${weekColor(wt.pct)}18` : '#F8FAFC',
-                  color: weekColor(wt.pct), fontWeight: 700, fontSize: 11
-                }}>
-                  {wt.pct != null ? `${wt.pct.toFixed(0)}%` : '—'}
-                </td>
-              ))}
-            </tr>
+              </React.Fragment>
+            ))}
           </tbody>
         </table>
       </div>
@@ -1859,14 +1939,7 @@ function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId, tasks })
           </button>
         </div>
       ) : (
-        <>
-          <div style={{ marginBottom: 12 }}>
-            {activePlan.goals.map(g => (
-              <GoalCard key={g.id} goal={g} onUpdate={(patch) => updateGoal(g.id, patch)} />
-            ))}
-          </div>
-          <TrackingTable plan={activePlan} onToggleCell={toggleCell} tasks={tasks} />
-        </>
+        <TrackingTable plan={activePlan} onToggleCell={toggleCell} tasks={tasks} onUpdateGoal={updateGoal} />
       )}
     </div>
   );
@@ -1949,7 +2022,7 @@ function App() {
   return (
     <div style={S.app}>
       <div style={S.header}>
-        <div style={S.logo}>Дела</div>
+        <div style={S.logo}>План 2026</div>
         <div style={S.tabs}>
           <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Канбан</button>
           <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
