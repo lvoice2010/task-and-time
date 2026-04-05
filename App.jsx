@@ -1008,7 +1008,14 @@ function ReportsView({ tasks }) {
     const now = Date.now();
     const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
     if (period === 'today') return { from: startOfDay.getTime(), to: now };
-    if (period === 'week')  return { from: now - 7 * 86400000, to: now };
+    if (period === 'week') {
+      const d = new Date(now); d.setHours(0, 0, 0, 0);
+      const dow = d.getDay();
+      const diff = dow === 0 ? -6 : 1 - dow;
+      d.setDate(d.getDate() + diff); // Monday 00:00
+      const end = new Date(d); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999); // Sunday 23:59
+      return { from: d.getTime(), to: end.getTime() };
+    }
     if (period === 'month') return { from: now - 30 * 86400000, to: now };
     if (period === 'all')   return { from: 0, to: now };
     if (period === 'custom') {
