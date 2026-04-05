@@ -550,6 +550,32 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
   const [dragOver, setDragOver] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newEstH, setNewEstH] = useState('');
+  const [newEstM, setNewEstM] = useState('');
+  const [newDept, setNewDept] = useState(null);
+  const [newCompany, setNewCompany] = useState(null);
+
+  const resetForm = () => {
+    setNewTitle(''); setNewDesc(''); setNewEstH(''); setNewEstM('');
+    setNewDept(null); setNewCompany(null); setAdding(false);
+  };
+
+  const submitNew = () => {
+    const t = newTitle.trim();
+    if (!t) return;
+    const h = parseInt(newEstH, 10) || 0;
+    const m = parseInt(newEstM, 10) || 0;
+    const mins = h * 60 + m;
+    onAddTask(column.id, {
+      title: t,
+      description: newDesc,
+      estimateMinutes: mins > 0 ? mins : null,
+      dept: newDept,
+      company: newCompany,
+    });
+    resetForm();
+  };
   const total = tasks.reduce((s, t) => s + taskTotal(t, now), 0);
   const plannedMin = tasks.reduce((s, t) => s + (t.estimateMinutes || 0), 0);
   const totalInColumn = allTasks.filter(t => t.column === column.id).length;
@@ -610,25 +636,59 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
       </div>
 
       {adding ? (
-        <input
-          autoFocus value={newTitle}
-          onChange={e => setNewTitle(e.target.value)}
-          onBlur={() => {
-            const v = newTitle.trim();
-            if (v) onAddTask(column.id, v);
-            setNewTitle(''); setAdding(false);
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              const v = newTitle.trim();
-              if (v) { onAddTask(column.id, v); setNewTitle(''); }
-              else setAdding(false);
-            }
-            if (e.key === 'Escape') { setNewTitle(''); setAdding(false); }
-          }}
-          placeholder="Название задачи..."
-          style={{ ...S.input, marginTop: 4 }}
-        />
+        <div style={{ marginTop: 6, padding: 10, background: '#FFFFFF', borderRadius: 8, border: '1px solid rgba(15,23,42,0.1)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input
+            autoFocus value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') resetForm(); if (e.key === 'Enter') submitNew(); }}
+            placeholder="Название задачи *"
+            style={{ ...S.input, padding: '7px 10px', fontSize: 13, fontWeight: 500 }}
+          />
+          <textarea
+            value={newDesc}
+            onChange={e => setNewDesc(e.target.value)}
+            placeholder="Описание..."
+            rows={2}
+            style={{ ...S.input, padding: '6px 10px', fontSize: 12, resize: 'vertical', minHeight: 40, fontFamily: 'DM Sans', lineHeight: 1.4 }}
+          />
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: '#64748B', fontWeight: 600, marginRight: 2 }}>ПЛАН</span>
+            <input type="number" min="0" value={newEstH} onChange={e => setNewEstH(e.target.value)} placeholder="0"
+              style={{ ...S.input, padding: '4px 6px', fontSize: 12, width: 44 }} />
+            <span style={{ fontSize: 10, color: '#64748B' }}>ч</span>
+            <input type="number" min="0" max="59" value={newEstM} onChange={e => setNewEstM(e.target.value)} placeholder="0"
+              style={{ ...S.input, padding: '4px 6px', fontSize: 12, width: 44 }} />
+            <span style={{ fontSize: 10, color: '#64748B' }}>мин</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em', marginBottom: 4 }}>ОТДЕЛ</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {DEPTS.map(d => (
+                <button key={d.id} onClick={() => setNewDept(newDept === d.id ? null : d.id)}
+                  style={{ ...S.chip(newDept === d.id, d.color), padding: '3px 7px', fontSize: 10 }}>{d.name}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em', marginBottom: 4 }}>КОМПАНИЯ</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {COMPANIES.map(c => (
+                <button key={c.id} onClick={() => setNewCompany(newCompany === c.id ? null : c.id)}
+                  style={{ ...S.chip(newCompany === c.id, c.color), padding: '3px 7px', fontSize: 10 }}>{c.short}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+            <button onClick={submitNew} className="btn-hover"
+              style={{ padding: '6px 12px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#0284C7', color: '#FFFFFF', flex: 1 }}>
+              Создать
+            </button>
+            <button onClick={resetForm} className="btn-hover"
+              style={{ padding: '6px 12px', fontSize: 11, fontWeight: 500, borderRadius: 5, color: '#64748B', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
+              Отмена
+            </button>
+          </div>
+        </div>
       ) : (
         <button
           className="btn-hover"
@@ -673,7 +733,20 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     }]);
   };
 
-  const addTaskToColumn = (columnId, title) => addTask(title, null, null, columnId);
+  const addTaskToColumn = (columnId, fields) => {
+    setTasks(prev => [...prev, {
+      id: newId(),
+      title: fields.title,
+      column: columnId,
+      dept: fields.dept || null,
+      company: fields.company || null,
+      sessions: [], createdAt: Date.now(),
+      description: fields.description || '',
+      estimateMinutes: fields.estimateMinutes || null,
+      completedAt: null, result: '',
+      descriptionFiles: [], resultFiles: []
+    }]);
+  };
 
   const updateTask = (id, patch) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
