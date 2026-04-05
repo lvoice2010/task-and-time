@@ -606,11 +606,11 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
           {showPlanned ? (
-            <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 600 }} title="Запланировано по оценкам задач">
+            <span className="mono" style={{ fontSize: 11, color: '#0F172A', fontWeight: 600 }} title="Запланировано по оценкам задач">
               📋 {fmtDuration(plannedMin * 60000)}
             </span>
           ) : (
-            <span className="mono" style={{ fontSize: 10, color: column.color, fontWeight: 600 }} title="Фактически потрачено">
+            <span className="mono" style={{ fontSize: 11, color: '#0F172A', fontWeight: 600 }} title="Фактически потрачено">
               Σ {fmtDuration(total)}
             </span>
           )}
