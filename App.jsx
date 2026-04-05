@@ -8,6 +8,7 @@ const COLUMNS = [
   { id: 'week',      title: 'На неделю',            color: '#FBBF24' },
   { id: 'urgent',    title: 'Срочно / Важно',       color: '#F97316' },
   { id: 'important', title: 'Важно / Не срочно',    color: '#38BDF8' },
+  { id: 'delegate',  title: 'Не важно / Срочно',    color: '#EC4899' },
   { id: 'later',     title: 'Не срочно / Не важно', color: '#A78BFA' },
   { id: 'done',      title: 'Сделано',              color: '#34D399' },
 ];
