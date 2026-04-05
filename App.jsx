@@ -1320,7 +1320,7 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
     return arr;
   }, [plan.startDate]);
 
-  const cellSize = 28;
+  const cellSize = 32;
 
   const cycleCell = (current) => {
     if (current === true) return false; // ✓ → ✗
@@ -1442,9 +1442,9 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                   else if (blockedWeekend) bg = '#E5E7EB';
                   else if (weekend) bg = '#F8FAFC';
 
-                  if (manualVal === true) { content = '✓'; color = '#059669'; bg = '#D1FAE5'; }
-                  else if (manualVal === false) { content = '✗'; color = '#DC2626'; bg = '#FEE2E2'; }
-                  else if (eff.isAuto && eff.value === true) { content = '✓'; color = '#059669'; bg = '#ECFDF5'; }
+                  if (manualVal === true) { content = '✔'; color = '#059669'; bg = '#D1FAE5'; }
+                  else if (manualVal === false) { content = '✖'; color = '#DC2626'; bg = '#FEE2E2'; }
+                  else if (eff.isAuto && eff.value === true) { content = '✔'; color = '#059669'; bg = '#ECFDF5'; }
 
                   const isAutoMark = manualVal == null && eff.isAuto && eff.value === true;
                   const border = isToday ? '2px solid #F59E0B' : (weekStart ? '2px solid rgba(15,23,42,0.15)' : '1px solid rgba(15,23,42,0.04)');
@@ -1460,7 +1460,7 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                         width: cellSize, height: cellSize, padding: 0, textAlign: 'center',
                         borderBottom: '1px solid rgba(15,23,42,0.04)',
                         borderLeft: border,
-                        background: bg, color, fontWeight: 700, fontSize: 13,
+                        background: bg, color, fontWeight: 900, fontSize: 16,
                         cursor: clickable ? 'pointer' : 'default',
                         userSelect: 'none',
                         opacity: isAutoMark ? 0.7 : 1,
