@@ -957,15 +957,36 @@ function BarChart({ title, rows, maxVal }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {rows.map(r => {
           const pct = maxVal > 0 ? (r.value / maxVal) * 100 : 0;
+          const hasTarget = r.target && r.target > 0;
+          const targetHours = hasTarget ? r.target / 3600000 : 0;
+          const actualHours = r.value / 3600000;
+          const targetPct = hasTarget ? Math.min(100, (actualHours / targetHours) * 100) : 0;
+          const reached = hasTarget && actualHours >= targetHours;
+          const goalColor = !hasTarget ? r.color : (reached ? '#059669' : (targetPct >= 75 ? '#CA8A04' : '#DC2626'));
+          // target marker position on the shared scale
+          const targetMarkerPct = hasTarget && maxVal > 0 ? (r.target / maxVal) * 100 : null;
           return (
             <div key={r.key}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: '#334155' }}>{r.label}</span>
-                <span className="mono" style={{ fontSize: 12, color: r.color, fontWeight: 600 }}>{fmtHours(r.value)} ч</span>
+                <span style={{ fontSize: 12, color: '#334155', fontWeight: hasTarget ? 600 : 400 }}>{r.label}</span>
+                {hasTarget ? (
+                  <span className="mono" style={{ fontSize: 12, color: goalColor, fontWeight: 600 }}>
+                    {actualHours.toFixed(1)} / {targetHours.toFixed(0)} ч · {targetPct.toFixed(0)}%
+                    {reached && ' ✓'}
+                  </span>
+                ) : (
+                  <span className="mono" style={{ fontSize: 12, color: r.color, fontWeight: 600 }}>{fmtHours(r.value)} ч</span>
+                )}
               </div>
-              <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: r.color, borderRadius: 3, transition: 'width 0.3s' }} />
+              <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: hasTarget ? goalColor : r.color, borderRadius: 3, transition: 'width 0.3s' }} />
+                {targetMarkerPct != null && (
+                  <div title={`Цель: ${targetHours.toFixed(0)}ч`} style={{ position: 'absolute', top: -2, bottom: -2, left: `${targetMarkerPct}%`, width: 2, background: '#0F172A', borderRadius: 1 }} />
+                )}
               </div>
+              {hasTarget && r.targetHint && (
+                <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{r.targetHint}</div>
+              )}
             </div>
           );
         })}
@@ -1015,8 +1036,15 @@ function ReportsView({ tasks }) {
     return map;
   }, [tasksWithTime]);
 
+  const daysInPeriod = Math.max(1, Math.ceil((to - from) / 86400000));
+  const DEPT_TARGETS = { sales: 2, marketing: 1 }; // hours per day
   const deptRows = [
-    ...DEPTS.map(d => ({ key: d.id, label: d.name, color: d.color, value: byDept[d.id] })),
+    ...DEPTS.map(d => {
+      const perDay = DEPT_TARGETS[d.id];
+      const target = perDay ? perDay * daysInPeriod * 3600000 : null;
+      const targetHint = perDay ? `план: ${perDay}ч/день × ${daysInPeriod} дн.` : null;
+      return { key: d.id, label: d.name, color: d.color, value: byDept[d.id], target, targetHint };
+    }),
     { key: 'none', label: 'Без отдела', color: '#64748B', value: byDept.none },
   ];
   const companyRows = [
@@ -1024,7 +1052,11 @@ function ReportsView({ tasks }) {
     { key: 'none', label: 'Без компании', color: '#64748B', value: byCompany.none },
   ];
 
-  const maxVal = Math.max(...deptRows.map(r => r.value), ...companyRows.map(r => r.value), 0.001);
+  const maxVal = Math.max(
+    ...deptRows.map(r => Math.max(r.value, r.target || 0)),
+    ...companyRows.map(r => r.value),
+    0.001
+  );
 
   // Cross table dept x company
   const cross = useMemo(() => {
@@ -1380,12 +1412,18 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
   return (
     <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
-        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11 }}>
+        <table className="mono" style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: 34 }} />
+            <col style={{ width: 160 }} />
+            <col style={{ width: 200 }} />
+            {days.map(iso => <col key={iso} style={{ width: cellSize }} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ ...stickyStyle, left: 0, width: 30, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B' }}>№</th>
-              <th style={{ ...stickyStyle, left: 30, width: 180, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Цель</th>
-              <th style={{ ...stickyStyle, left: 210, width: 150, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Тактика</th>
+              <th style={{ ...stickyStyle, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B' }}>№</th>
+              <th style={{ ...stickyStyle, left: 34, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Цель</th>
+              <th style={{ ...stickyStyle, left: 194, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.1)', fontWeight: 600, color: '#64748B', textAlign: 'left' }}>Тактика</th>
               {days.map((iso, i) => {
                 const d = parseISODate(iso);
                 const isToday = iso === today;
@@ -1419,10 +1457,10 @@ function TrackingTable({ plan, onToggleCell, tasks }) {
                 <td style={{ ...stickyStyle, background: goalBg, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, textAlign: 'center', fontWeight: 700, color: '#334155' }}>
                   {isFirst ? goal.number : ''}
                 </td>
-                <td style={{ ...stickyStyle, background: goalBg, left: 30, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontWeight: isFirst ? 700 : 400, fontSize: 11, fontFamily: 'DM Sans' }}>
+                <td style={{ ...stickyStyle, background: goalBg, left: 34, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontWeight: isFirst ? 700 : 400, fontSize: 11, fontFamily: 'DM Sans', wordBreak: 'break-word' }}>
                   {isFirst ? goal.title : ''}
                 </td>
-                <td style={{ ...stickyStyle, left: 210, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 11, fontFamily: 'DM Sans' }}>
+                <td style={{ ...stickyStyle, left: 194, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 11, fontFamily: 'DM Sans', wordBreak: 'break-word' }}>
                   {tactic.title}
                   <span style={{ fontSize: 9, color: '#94A3B8', marginLeft: 4 }}>
                     {tactic.frequency === 'weekday' ? '(5/7)' : '(7/7)'}
