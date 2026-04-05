@@ -527,22 +527,37 @@ function FilterBar({ deptFilter, setDeptFilter, companyFilter, setCompanyFilter 
 }
 
 function SummaryBar({ tasks, activeTask, now }) {
-  // Monday-based current week
-  const weekStart = (() => {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    const day = d.getDay(); // 0=Sun
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    return d.getTime();
-  })();
+  const [period, setPeriod] = useState('week');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+
+  const { from, to, label: periodLabel } = useMemo(() => {
+    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+    if (period === 'today') return { from: startOfToday.getTime(), to: now, label: 'за сегодня' };
+    if (period === 'week') {
+      const d = new Date(now); d.setHours(0, 0, 0, 0);
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      d.setDate(d.getDate() + diff);
+      return { from: d.getTime(), to: now, label: 'за текущую неделю' };
+    }
+    if (period === 'month') return { from: now - 30 * 86400000, to: now, label: 'за 30 дней' };
+    if (period === 'all') return { from: 0, to: now, label: 'за всё время' };
+    if (period === 'custom') {
+      const f = customFrom ? new Date(customFrom).getTime() : 0;
+      const toDate = customTo ? new Date(customTo) : new Date(now);
+      toDate.setHours(23, 59, 59, 999);
+      return { from: f, to: toDate.getTime(), label: 'свой период' };
+    }
+    return { from: 0, to: now, label: '' };
+  }, [period, customFrom, customTo, now]);
 
   const total = tasks.length;
-  const doneThisWeek = tasks.filter(t => t.completedAt && t.completedAt >= weekStart && t.completedAt <= now).length;
-  const timeThisWeek = tasks.reduce((s, t) => s + taskTotalInRange(t, weekStart, now), 0);
-  const doneTimeThisWeek = tasks
-    .filter(t => t.completedAt && t.completedAt >= weekStart && t.completedAt <= now)
-    .reduce((s, t) => s + taskTotalInRange(t, weekStart, now), 0);
+  const doneInPeriod = tasks.filter(t => t.completedAt && t.completedAt >= from && t.completedAt <= to).length;
+  const timeInPeriod = tasks.reduce((s, t) => s + taskTotalInRange(t, from, to), 0);
+  const doneTimeInPeriod = tasks
+    .filter(t => t.completedAt && t.completedAt >= from && t.completedAt <= to)
+    .reduce((s, t) => s + taskTotalInRange(t, from, to), 0);
 
   const item = (label, value, color) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -551,24 +566,48 @@ function SummaryBar({ tasks, activeTask, now }) {
     </div>
   );
 
+  const pBtn = (id, text) => (
+    <button key={id} onClick={() => setPeriod(id)} style={{ ...S.chip(period === id, '#0284C7'), padding: '4px 8px', fontSize: 10 }}>{text}</button>
+  );
+
+  const fmtShort = (ts) => new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+
   return (
-    <div style={{ ...S.card, marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 16, borderRight: '1px solid rgba(15,23,42,0.08)' }}>
-        <div style={{ fontSize: 9, color: '#94A3B8', fontWeight: 600, letterSpacing: '0.08em' }}>ЗА ТЕКУЩУЮ НЕДЕЛЮ</div>
-        <div className="mono" style={{ fontSize: 11, color: '#475569', fontWeight: 500 }}>
-          {new Date(weekStart).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })} — сегодня
-        </div>
+    <div style={{ ...S.card, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 9, color: '#94A3B8', fontWeight: 600, letterSpacing: '0.08em', marginRight: 4 }}>ПЕРИОД</span>
+        {pBtn('today', 'Сегодня')}
+        {pBtn('week', 'Неделя')}
+        {pBtn('month', '30 дн.')}
+        {pBtn('all', 'Всё')}
+        {pBtn('custom', 'Свой')}
+        {period === 'custom' && (
+          <>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+              style={{ ...S.input, padding: '3px 6px', fontSize: 11, width: 'auto' }} />
+            <span style={{ color: '#64748B', fontSize: 11 }}>→</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+              style={{ ...S.input, padding: '3px 6px', fontSize: 11, width: 'auto' }} />
+          </>
+        )}
+        {from > 0 && (
+          <span className="mono" style={{ fontSize: 10, color: '#64748B', marginLeft: 'auto' }}>
+            {fmtShort(from)} — {fmtShort(to)}
+          </span>
+        )}
       </div>
-      {item('ЗАДАЧ ВСЕГО', total)}
-      {item('СДЕЛАНО', doneThisWeek, '#059669')}
-      {item('ВРЕМЯ', fmtDuration(timeThisWeek))}
-      {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTimeThisWeek), '#059669')}
-      {activeTask && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: '#D1FAE5', borderRadius: 6, border: '1px solid #A7F3D0' }}>
-          <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669' }} />
-          <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{activeTask.title}</span>
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+        {item('ЗАДАЧ ВСЕГО', total)}
+        {item('СДЕЛАНО', doneInPeriod, '#059669')}
+        {item('ВРЕМЯ', fmtDuration(timeInPeriod))}
+        {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTimeInPeriod), '#059669')}
+        {activeTask && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: '#D1FAE5', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+            <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669' }} />
+            <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{activeTask.title}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
