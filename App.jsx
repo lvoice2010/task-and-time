@@ -683,7 +683,7 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 40 }}>
+      <div style={{ flex: 1, minHeight: 40, maxHeight: 'calc(100vh - 360px)', overflowY: 'auto', paddingRight: 4 }}>
         {tasks.length === 0 && hiddenCount === 0 && (
           <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>— пусто —</div>
         )}
