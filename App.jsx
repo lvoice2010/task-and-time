@@ -287,10 +287,11 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
   const [resultFiles, setResultFiles] = useState(task.resultFiles || []);
   const [dept, setDept] = useState(task.dept);
   const [company, setCompany] = useState(task.company);
-  const [addingTime, setAddingTime] = useState(false);
-  const [addH, setAddH] = useState('');
-  const [addM, setAddM] = useState('');
-  const [addDate, setAddDate] = useState(toISODate(new Date()));
+  const [editingTime, setEditingTime] = useState(false);
+  const totalMins = Math.floor(taskTotal(task, now) / 60000);
+  const [editH, setEditH] = useState(String(Math.floor(totalMins / 60)));
+  const [editM, setEditM] = useState(String(totalMins % 60));
+  const [editDate, setEditDate] = useState(toISODate(new Date()));
 
   useEffect(() => {
     setTitle(task.title);
@@ -431,38 +432,79 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
             {label('Потрачено')}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="mono" style={{ fontSize: 13, color: '#0284C7', fontWeight: 600 }}>{fmtDuration(total)}</span>
-              <button onClick={() => setAddingTime(!addingTime)} className="btn-hover"
+              <button onClick={() => {
+                const tm = Math.floor(taskTotal(task, now) / 60000);
+                setEditH(String(Math.floor(tm / 60)));
+                setEditM(String(tm % 60));
+                setEditingTime(!editingTime);
+              }} className="btn-hover"
                 style={{ padding: '2px 8px', fontSize: 10, fontWeight: 500, borderRadius: 4, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
-                {addingTime ? '×' : '✏ Править'}
+                {editingTime ? '×' : '✏ Править'}
               </button>
             </div>
-            {addingTime && (
+            {editingTime && (
               <div style={{ marginTop: 8, padding: 10, background: '#F8FAFC', borderRadius: 6, border: '1px solid rgba(15,23,42,0.08)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em' }}>ДОБАВИТЬ ВРЕМЯ</div>
+                <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em' }}>УСТАНОВИТЬ ОБЩЕЕ ВРЕМЯ</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input type="number" min="0" value={addH} onChange={e => setAddH(e.target.value)} placeholder="0"
+                  <input type="number" min="0" value={editH} onChange={e => setEditH(e.target.value)} placeholder="0"
                     style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 50 }} />
                   <span style={{ fontSize: 11, color: '#64748B' }}>ч</span>
-                  <input type="number" min="0" max="59" value={addM} onChange={e => setAddM(e.target.value)} placeholder="0"
+                  <input type="number" min="0" max="59" value={editM} onChange={e => setEditM(e.target.value)} placeholder="0"
                     style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 50 }} />
-                  <span style={{ fontSize: 11, color: '#64748B' }}>мин за</span>
-                  <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)}
+                  <span style={{ fontSize: 11, color: '#64748B' }}>мин</span>
+                  <span style={{ fontSize: 11, color: '#94A3B8' }}>·</span>
+                  <span style={{ fontSize: 10, color: '#64748B' }}>коррекция за</span>
+                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
                     style={{ ...S.input, padding: '4px 8px', fontSize: 12, width: 'auto' }} />
                 </div>
+                {(() => {
+                  const newMs = ((parseInt(editH,10)||0) * 60 + (parseInt(editM,10)||0)) * 60000;
+                  const curMs = taskTotal(task, now);
+                  const delta = newMs - curMs;
+                  const absDelta = Math.abs(delta);
+                  if (Math.abs(delta) < 60000) return null;
+                  return (
+                    <div className="mono" style={{ fontSize: 11, color: delta > 0 ? '#059669' : '#DC2626', fontWeight: 500 }}>
+                      {delta > 0 ? '+' : '−'}{fmtDuration(absDelta)}
+                    </div>
+                  );
+                })()}
                 <button onClick={() => {
-                  const h = parseInt(addH, 10) || 0;
-                  const m = parseInt(addM, 10) || 0;
-                  const totalAdd = (h * 60 + m) * 60000;
-                  if (totalAdd <= 0) return;
-                  const day = parseISODate(addDate);
+                  const newMs = ((parseInt(editH,10)||0) * 60 + (parseInt(editM,10)||0)) * 60000;
+                  const curMs = taskTotal(task, now);
+                  const delta = newMs - curMs;
+                  if (delta === 0) { setEditingTime(false); return; }
+
+                  const day = parseISODate(editDate);
                   day.setHours(12, 0, 0, 0);
-                  const endTs = day.getTime();
-                  const startTs = endTs - totalAdd;
-                  onUpdate({ sessions: [...task.sessions, { start: startTs, end: endTs }] });
-                  setAddH(''); setAddM(''); setAddingTime(false);
+
+                  if (delta > 0) {
+                    // add correction session
+                    const endTs = day.getTime();
+                    const startTs = endTs - delta;
+                    onUpdate({ sessions: [...task.sessions, { start: startTs, end: endTs }] });
+                  } else {
+                    // subtract: trim sessions from end
+                    let remaining = Math.abs(delta);
+                    const sessions = [...task.sessions].map(s => ({...s}));
+                    for (let i = sessions.length - 1; i >= 0 && remaining > 0; i--) {
+                      const s = sessions[i];
+                      if (s.end == null) continue; // skip active
+                      const dur = s.end - s.start;
+                      if (dur <= remaining) {
+                        remaining -= dur;
+                        sessions.splice(i, 1);
+                      } else {
+                        s.end = s.end - remaining;
+                        remaining = 0;
+                      }
+                    }
+                    onUpdate({ sessions });
+                  }
+                  setEditingTime(false);
                 }} className="btn-hover"
                   style={{ padding: '6px 14px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#0284C7', color: '#FFFFFF', alignSelf: 'flex-start' }}>
-                  Добавить
+                  Применить
                 </button>
               </div>
             )}
