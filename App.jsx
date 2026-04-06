@@ -617,8 +617,9 @@ function SummaryBar({ tasks, activeTask, now }) {
   );
 }
 
-function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart, onAddTask, onOpenTask }) {
+function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart, onAddTask, onOpenTask, onReorder }) {
   const [dragOver, setDragOver] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -656,8 +657,8 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => { e.preventDefault(); setDragOver(false); onDrop(column.id); }}
+      onDragLeave={() => { setDragOver(false); setDropTargetId(null); }}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); onDrop(column.id, dropTargetId); setDropTargetId(null); }}
       className={dragOver ? 'drag-over' : ''}
       style={{
         minWidth: 280, width: 280, flexShrink: 0,
@@ -763,13 +764,19 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
           <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '20px 0' }}>{hiddenCount} скрыто</div>
         )}
         {tasks.map(t => (
-          <TaskCard
-            key={t.id} task={t} now={now} isActive={activeId === t.id}
-            onDragStart={onDragStart}
-            onStart={() => onTaskAction('start', t.id)}
-            onPause={() => onTaskAction('pause', t.id)}
-            onOpen={() => onOpenTask(t.id)}
-          />
+          <div
+            key={t.id}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(t.id); setDragOver(true); }}
+            style={{ borderTop: dropTargetId === t.id && dragOver ? '3px solid #0284C7' : '3px solid transparent', borderRadius: 2, transition: 'border 0.1s' }}
+          >
+            <TaskCard
+              task={t} now={now} isActive={activeId === t.id}
+              onDragStart={onDragStart}
+              onStart={() => onTaskAction('start', t.id)}
+              onPause={() => onTaskAction('pause', t.id)}
+              onOpen={() => onOpenTask(t.id)}
+            />
+          </div>
         ))}
       </div>
     </div>
@@ -786,23 +793,36 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDrop = (columnId) => {
+  const handleDrop = (columnId, targetTaskId) => {
     const id = draggedId.current;
-    if (!id) return;
+    if (!id || id === targetTaskId) { draggedId.current = null; return; }
     const nowTs = Date.now();
-    setTasks(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      // moved to Done: set completedAt, close active session
-      if (columnId === 'done' && t.column !== 'done') {
-        const sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
-        return { ...t, column: columnId, sessions, completedAt: t.completedAt || nowTs };
+    setTasks(prev => {
+      // First: update column + completedAt
+      let updated = prev.map(t => {
+        if (t.id !== id) return t;
+        if (columnId === 'done' && t.column !== 'done') {
+          const sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
+          return { ...t, column: columnId, sessions, completedAt: t.completedAt || nowTs };
+        }
+        if (columnId !== 'done' && t.column === 'done') {
+          return { ...t, column: columnId, completedAt: null };
+        }
+        return { ...t, column: columnId };
+      });
+      // Then: reorder — move task before targetTaskId
+      if (targetTaskId) {
+        const task = updated.find(t => t.id === id);
+        updated = updated.filter(t => t.id !== id);
+        const targetIdx = updated.findIndex(t => t.id === targetTaskId);
+        if (targetIdx >= 0) {
+          updated.splice(targetIdx, 0, task);
+        } else {
+          updated.push(task);
+        }
       }
-      // moved OUT of Done: clear completedAt
-      if (columnId !== 'done' && t.column === 'done') {
-        return { ...t, column: columnId, completedAt: null };
-      }
-      return { ...t, column: columnId };
-    }));
+      return updated;
+    });
     if (columnId === 'done' && activeId === id) setActiveId(null);
     draggedId.current = null;
   };
