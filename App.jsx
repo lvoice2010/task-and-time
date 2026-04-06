@@ -531,7 +531,7 @@ function FilterBar({ deptFilter, setDeptFilter, companyFilter, setCompanyFilter 
   );
 }
 
-function SummaryBar({ tasks, activeTask, now }) {
+function SummaryBar({ tasks, activeTasks, now }) {
   const [period, setPeriod] = useState('week');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -606,10 +606,14 @@ function SummaryBar({ tasks, activeTask, now }) {
         {item('СДЕЛАНО', doneInPeriod, '#059669')}
         {item('ВРЕМЯ', fmtDuration(timeInPeriod))}
         {item('ВРЕМЯ СДЕЛАНО', fmtDuration(doneTimeInPeriod), '#059669')}
-        {activeTask && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', padding: '6px 12px', background: '#D1FAE5', borderRadius: 6, border: '1px solid #A7F3D0' }}>
-            <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669' }} />
-            <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{activeTask.title}</span>
+        {activeTasks.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+            {activeTasks.map(t => (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#D1FAE5', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+                <span className="pulse" style={{ width: 5, height: 5, borderRadius: '50%', background: '#059669' }} />
+                <span style={{ fontSize: 11, color: '#059669', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -617,7 +621,7 @@ function SummaryBar({ tasks, activeTask, now }) {
   );
 }
 
-function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction, now, onDragStart, onAddTask, onOpenTask, onReorder }) {
+function KanbanColumn({ column, tasks, allTasks, onDrop, onTaskAction, now, onDragStart, onAddTask, onOpenTask, onReorder }) {
   const [dragOver, setDragOver] = useState(false);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -770,7 +774,7 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
             style={{ borderTop: dropTargetId === t.id && dragOver ? '3px solid #0284C7' : '3px solid transparent', borderRadius: 2, transition: 'border 0.1s' }}
           >
             <TaskCard
-              task={t} now={now} isActive={activeId === t.id}
+              task={t} now={now} isActive={taskHasActive(t)}
               onDragStart={onDragStart}
               onStart={() => onTaskAction('start', t.id)}
               onPause={() => onTaskAction('pause', t.id)}
@@ -783,7 +787,7 @@ function KanbanColumn({ column, tasks, allTasks, activeId, onDrop, onTaskAction,
   );
 }
 
-function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
+function KanbanView({ tasks, setTasks, now }) {
   const [deptFilter, setDeptFilter] = useState(null);
   const [companyFilter, setCompanyFilter] = useState(null);
   const draggedId = useRef(null);
@@ -823,7 +827,6 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
       }
       return updated;
     });
-    if (columnId === 'done' && activeId === id) setActiveId(null);
     draggedId.current = null;
   };
 
@@ -865,7 +868,6 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
       const sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
       return { ...t, sessions, column: 'done', completedAt: nowTs };
     }));
-    if (activeId === id) setActiveId(null);
   };
 
   const cycleValue = (cur, list) => {
@@ -879,31 +881,23 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     if (action === 'start') {
       const nowTs = Date.now();
       setTasks(prev => prev.map(t => {
-        // pause any active
-        if (t.id !== id && taskHasActive(t)) {
-          return { ...t, sessions: t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s) };
-        }
         if (t.id === id) {
-          // close any existing active just in case, then open new
           const closed = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
           return { ...t, sessions: [...closed, { start: nowTs, end: null }] };
         }
         return t;
       }));
-      setActiveId(id);
     } else if (action === 'pause') {
       const nowTs = Date.now();
       setTasks(prev => prev.map(t => t.id === id
         ? { ...t, sessions: t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s) }
         : t));
-      setActiveId(null);
     } else if (action === 'cycleDept') {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, dept: cycleValue(t.dept, DEPT_IDS) } : t));
     } else if (action === 'cycleCompany') {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, company: cycleValue(t.company, COMPANY_IDS) } : t));
     } else if (action === 'delete') {
       setTasks(prev => prev.filter(t => t.id !== id));
-      if (activeId === id) setActiveId(null);
     } else if (action === 'rename') {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, title: payload } : t));
     }
@@ -914,11 +908,11 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
     (companyFilter == null || t.company === companyFilter)
   );
 
-  const activeTask = activeId ? tasks.find(t => t.id === activeId) : null;
+  const activeTasks = tasks.filter(t => taskHasActive(t));
 
   return (
     <div>
-      <SummaryBar tasks={tasks} activeTask={activeTask} now={now} />
+      <SummaryBar tasks={tasks} activeTasks={activeTasks} now={now} />
       <FilterBar
         deptFilter={deptFilter} setDeptFilter={setDeptFilter}
         companyFilter={companyFilter} setCompanyFilter={setCompanyFilter}
@@ -949,7 +943,6 @@ function KanbanView({ tasks, activeId, setTasks, setActiveId, now }) {
               column={col} now={now}
               tasks={filtered.filter(t => t.column === col.id)}
               allTasks={tasks}
-              activeId={activeId}
               onDrop={handleDrop}
               onDragStart={onDragStart}
               onTaskAction={handleTaskAction}
@@ -1980,7 +1973,6 @@ function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId, tasks })
 function App() {
   const [tab, setTab] = useState('kanban');
   const [tasks, setTasks] = useState([]);
-  const [activeId, setActiveId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [loaded, setLoaded] = useState(false);
   const [plans, setPlans] = useState([]);
@@ -1994,7 +1986,6 @@ function App() {
       if (raw) {
         const data = JSON.parse(raw);
         setTasks(Array.isArray(data.tasks) ? data.tasks : []);
-        setActiveId(data.activeTimerId || null);
       }
     } catch (e) { console.warn('load failed', e); }
     setLoaded(true);
@@ -2015,10 +2006,10 @@ function App() {
     if (!loaded) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        tasks, activeTimerId: activeId, timerStartedAt: null
+        tasks
       }));
     } catch (e) { console.warn('save failed', e); }
-  }, [tasks, activeId, loaded]);
+  }, [tasks, loaded]);
 
   // save weekplan to localStorage
   useEffect(() => {
@@ -2044,7 +2035,6 @@ function App() {
   const reset = () => {
     if (window.confirm('Удалить все задачи и данные?')) {
       setTasks([]);
-      setActiveId(null);
       localStorage.removeItem(STORAGE_KEY);
     }
   };
@@ -2062,7 +2052,7 @@ function App() {
       </div>
       <div style={S.container}>
         {tab === 'kanban' && (
-          <KanbanView tasks={tasks} activeId={activeId} setTasks={setTasks} setActiveId={setActiveId} now={now} />
+          <KanbanView tasks={tasks} setTasks={setTasks} now={now} />
         )}
         {tab === 'reports' && <ReportsView tasks={tasks} />}
         {tab === 'weekplan' && (
