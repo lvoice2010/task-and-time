@@ -154,7 +154,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function TaskCard({ task, isActive, onStart, onPause, onOpen, onDragStart, now }) {
+function TaskCard({ task, isActive, onStart, onPause, onComplete, onOpen, onDragStart, now }) {
   const status = taskStatus(task);
   const total = taskTotal(task, now);
   const dept = getDept(task.dept);
@@ -210,6 +210,14 @@ function TaskCard({ task, isActive, onStart, onPause, onOpen, onDragStart, now }
             onClick={onStart}
             style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#D1FAE5', color: '#059669', border: '1px solid #A7F3D0' }}
           >▶ {status === 'paused' ? 'Прод.' : 'Старт'}</button>
+        )}
+        {task.column !== 'done' && (
+          <button
+            className="btn-hover"
+            onClick={onComplete}
+            title="Отметить выполненной"
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 5, background: '#DBEAFE', color: '#0284C7', border: '1px solid #BFDBFE', marginLeft: 'auto' }}
+          >✓ Выполнено</button>
         )}
       </div>
 
@@ -860,6 +868,7 @@ function KanbanColumn({ column, tasks, allTasks, onDrop, onTaskAction, now, onDr
               onDragStart={onDragStart}
               onStart={() => onTaskAction('start', t.id)}
               onPause={() => onTaskAction('pause', t.id)}
+              onComplete={() => onTaskAction('complete', t.id)}
               onOpen={() => onOpenTask(t.id)}
             />
           </div>
@@ -978,6 +987,8 @@ function KanbanView({ tasks, setTasks, now }) {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, dept: cycleValue(t.dept, DEPT_IDS) } : t));
     } else if (action === 'cycleCompany') {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, company: cycleValue(t.company, COMPANY_IDS) } : t));
+    } else if (action === 'complete') {
+      completeTask(id);
     } else if (action === 'delete') {
       setTasks(prev => prev.filter(t => t.id !== id));
     } else if (action === 'rename') {
