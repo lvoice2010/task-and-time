@@ -107,7 +107,7 @@ const S = {
     transition: 'all 0.15s'
   }),
   resetBtn: {
-    marginLeft: 'auto', padding: '7px 14px', fontSize: 12, fontWeight: 500,
+    padding: '7px 14px', fontSize: 12, fontWeight: 500,
     border: '1px solid rgba(220,38,38,0.3)', color: '#DC2626',
     borderRadius: 6, background: 'transparent', transition: 'all 0.15s'
   },
@@ -2132,6 +2132,47 @@ function App() {
     }
   };
 
+  const exportData = () => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tasks,
+      plans,
+      activePlanId,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.download = `plan-2026-backup-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importInputRef = useRef(null);
+  const importData = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const taskCount = Array.isArray(data.tasks) ? data.tasks.length : 0;
+      const planCount = Array.isArray(data.plans) ? data.plans.length : 0;
+      if (!window.confirm(`Импортировать ${taskCount} задач и ${planCount} планов? Текущие данные будут заменены.`)) {
+        e.target.value = '';
+        return;
+      }
+      if (Array.isArray(data.tasks)) setTasks(data.tasks);
+      if (Array.isArray(data.plans)) setPlans(data.plans);
+      if (data.activePlanId) setActivePlanId(data.activePlanId);
+      alert('Импорт завершён');
+    } catch (err) {
+      alert('Ошибка импорта: ' + err.message);
+    }
+    e.target.value = '';
+  };
+
   return (
     <div style={S.app}>
       <div style={S.header}>
@@ -2141,7 +2182,20 @@ function App() {
           <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
           <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
         </div>
-        <button onClick={reset} style={S.resetBtn} className="btn-hover">Сбросить</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={exportData} className="btn-hover"
+            style={{ padding: '7px 14px', fontSize: 12, fontWeight: 500, border: '1px solid rgba(15,23,42,0.12)', color: '#475569', borderRadius: 6, background: '#FFFFFF' }}
+            title="Скачать резервную копию всех данных">
+            ⬇ Экспорт
+          </button>
+          <input type="file" accept="application/json" ref={importInputRef} onChange={importData} style={{ display: 'none' }} />
+          <button onClick={() => importInputRef.current?.click()} className="btn-hover"
+            style={{ padding: '7px 14px', fontSize: 12, fontWeight: 500, border: '1px solid rgba(15,23,42,0.12)', color: '#475569', borderRadius: 6, background: '#FFFFFF' }}
+            title="Восстановить из резервной копии">
+            ⬆ Импорт
+          </button>
+          <button onClick={reset} style={S.resetBtn} className="btn-hover">Сбросить</button>
+        </div>
       </div>
       <div style={S.container}>
         {tab === 'kanban' && (
