@@ -1,5 +1,12 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
+// ===== Supabase =====
+const SUPABASE_URL = 'https://kxsnxaptxinzpwbrlonm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_oYUk4qGnWmQFYg1AhdTvUQ_9OmoiEoe';
+const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage }
+}) : null;
+
 // ===== Конфигурация =====
 const STORAGE_KEY = 'kanban-v4';
 
@@ -2061,6 +2068,97 @@ function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId, tasks })
   );
 }
 
+// ===== Авторизация =====
+
+function LoginScreen() {
+  const [step, setStep] = useState('email'); // email | code
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const sendCode = async () => {
+    const e = email.trim().toLowerCase();
+    if (!e) return;
+    setError(''); setLoading(true);
+    const { error } = await sb.auth.signInWithOtp({
+      email: e,
+      options: { shouldCreateUser: true },
+    });
+    setLoading(false);
+    if (error) setError(error.message);
+    else setStep('code');
+  };
+
+  const verifyCode = async () => {
+    const c = code.trim();
+    if (!c) return;
+    setError(''); setLoading(true);
+    const { error } = await sb.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: c,
+      type: 'email',
+    });
+    setLoading(false);
+    if (error) setError(error.message);
+    // успешный вход — auth listener подхватит сессию
+  };
+
+  return (
+    <div style={{ ...S.app, alignItems: 'center', justifyContent: 'center', display: 'flex', padding: 20 }}>
+      <div style={{ ...S.card, padding: 32, maxWidth: 420, width: '100%' }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>План 2026</div>
+        <div style={{ fontSize: 13, color: '#64748B', marginBottom: 24 }}>
+          Войдите по email — данные синхронизируются между устройствами и не потеряются при очистке кеша.
+        </div>
+
+        {step === 'email' ? (
+          <>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em' }}>EMAIL</label>
+            <input
+              type="email" value={email} onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') sendCode(); }}
+              placeholder="you@example.com" autoFocus
+              style={{ ...S.input, marginTop: 4, marginBottom: 12, padding: '10px 12px', fontSize: 14 }}
+            />
+            <button onClick={sendCode} disabled={loading || !email.trim()} className="btn-hover"
+              style={{ width: '100%', padding: '10px 16px', fontSize: 13, fontWeight: 600, borderRadius: 6, background: loading || !email.trim() ? '#94A3B8' : '#0284C7', color: '#FFFFFF' }}>
+              {loading ? 'Отправка...' : 'Получить код'}
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
+              Код отправлен на <b>{email}</b>. Откройте письмо и введите 6-значный код.
+            </div>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 600, letterSpacing: '0.05em' }}>КОД</label>
+            <input
+              type="text" value={code} onChange={e => setCode(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') verifyCode(); }}
+              placeholder="123456" autoFocus inputMode="numeric"
+              style={{ ...S.input, marginTop: 4, marginBottom: 12, padding: '10px 12px', fontSize: 18, fontFamily: 'JetBrains Mono', letterSpacing: '0.2em', textAlign: 'center' }}
+            />
+            <button onClick={verifyCode} disabled={loading || !code.trim()} className="btn-hover"
+              style={{ width: '100%', padding: '10px 16px', fontSize: 13, fontWeight: 600, borderRadius: 6, background: loading || !code.trim() ? '#94A3B8' : '#0284C7', color: '#FFFFFF', marginBottom: 8 }}>
+              {loading ? 'Проверка...' : 'Войти'}
+            </button>
+            <button onClick={() => { setStep('email'); setCode(''); setError(''); }} className="btn-hover"
+              style={{ width: '100%', padding: '8px 16px', fontSize: 12, fontWeight: 500, borderRadius: 6, color: '#64748B', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
+              ← Изменить email
+            </button>
+          </>
+        )}
+
+        {error && (
+          <div style={{ marginTop: 12, padding: '8px 12px', fontSize: 12, color: '#DC2626', background: '#FEE2E2', borderRadius: 5 }}>
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ===== Главный компонент =====
 
 function App() {
@@ -2071,46 +2169,85 @@ function App() {
   const [plans, setPlans] = useState([]);
   const [activePlanId, setActivePlanId] = useState(null);
   const [plansLoaded, setPlansLoaded] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [syncStatus, setSyncStatus] = useState('idle'); // idle | saving | saved | error
 
-  // load from localStorage
+  // auth subscription
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
-        setTasks(Array.isArray(data.tasks) ? data.tasks : []);
-      }
-    } catch (e) { console.warn('load failed', e); }
-    setLoaded(true);
-
-    try {
-      const raw = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
-        setPlans(Array.isArray(data.plans) ? data.plans : []);
-        setActivePlanId(data.activePlanId || null);
-      }
-    } catch (e) { console.warn('weekplan load failed', e); }
-    setPlansLoaded(true);
+    if (!sb) { setAuthChecking(false); return; }
+    sb.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user || null);
+      setAuthChecking(false);
+    });
+    const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  // save to localStorage
+  // Load data: from Supabase if logged in, else localStorage
   useEffect(() => {
-    if (!loaded) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        tasks
-      }));
-    } catch (e) { console.warn('save failed', e); }
-  }, [tasks, loaded]);
+    if (authChecking) return;
+    if (user && sb) {
+      // Load from Supabase
+      sb.from('plan_data').select('data').eq('user_id', user.id).maybeSingle()
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn('supabase load error', error);
+            setLoaded(true); setPlansLoaded(true);
+            return;
+          }
+          const d = data?.data || {};
+          setTasks(Array.isArray(d.tasks) ? d.tasks : []);
+          setPlans(Array.isArray(d.plans) ? d.plans : []);
+          setActivePlanId(d.activePlanId || null);
+          setLoaded(true); setPlansLoaded(true);
+        });
+    } else {
+      // Fallback: localStorage
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          setTasks(Array.isArray(data.tasks) ? data.tasks : []);
+        }
+      } catch (e) { console.warn('load failed', e); }
+      try {
+        const raw = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          setPlans(Array.isArray(data.plans) ? data.plans : []);
+          setActivePlanId(data.activePlanId || null);
+        }
+      } catch (e) { console.warn('weekplan load failed', e); }
+      setLoaded(true); setPlansLoaded(true);
+    }
+  }, [user, authChecking]);
 
-  // save weekplan to localStorage
+  // Save: to Supabase if logged in (debounced), else localStorage
   useEffect(() => {
-    if (!plansLoaded) return;
+    if (!loaded || !plansLoaded) return;
+    // localStorage cache always
     try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks }));
       localStorage.setItem(WEEKPLAN_STORAGE_KEY, JSON.stringify({ plans, activePlanId }));
-    } catch (e) { console.warn('weekplan save failed', e); }
-  }, [plans, activePlanId, plansLoaded]);
+    } catch (e) {}
+
+    if (user && sb) {
+      setSyncStatus('saving');
+      const t = setTimeout(async () => {
+        const { error } = await sb.from('plan_data').upsert({
+          user_id: user.id,
+          data: { tasks, plans, activePlanId },
+          updated_at: new Date().toISOString(),
+        });
+        setSyncStatus(error ? 'error' : 'saved');
+        if (!error) setTimeout(() => setSyncStatus('idle'), 2000);
+      }, 800);
+      return () => clearTimeout(t);
+    }
+  }, [tasks, plans, activePlanId, loaded, plansLoaded, user]);
 
   // ensure activePlanId points to existing plan
   useEffect(() => {
@@ -2173,6 +2310,39 @@ function App() {
     e.target.value = '';
   };
 
+  if (authChecking) {
+    return <div style={{ ...S.app, alignItems: 'center', justifyContent: 'center', display: 'flex' }}>
+      <div style={{ color: '#64748B', fontSize: 14 }}>Загрузка...</div>
+    </div>;
+  }
+
+  if (!user && sb) {
+    return <LoginScreen />;
+  }
+
+  const logout = async () => {
+    if (!sb) return;
+    if (window.confirm('Выйти из аккаунта?')) {
+      await sb.auth.signOut();
+    }
+  };
+
+  const syncBadge = () => {
+    if (!user) return null;
+    const map = {
+      idle:   { text: '☁ Синхронизировано', color: '#059669', bg: '#D1FAE5' },
+      saving: { text: '↻ Сохранение...',     color: '#0284C7', bg: '#DBEAFE' },
+      saved:  { text: '✓ Сохранено',         color: '#059669', bg: '#D1FAE5' },
+      error:  { text: '⚠ Ошибка сети',       color: '#DC2626', bg: '#FEE2E2' },
+    };
+    const s = map[syncStatus] || map.idle;
+    return (
+      <span className="mono" style={{ fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 4, color: s.color, background: s.bg }}>
+        {s.text}
+      </span>
+    );
+  };
+
   return (
     <div style={S.app}>
       <div style={S.header}>
@@ -2182,7 +2352,11 @@ function App() {
           <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
           <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {syncBadge()}
+          {user && (
+            <span style={{ fontSize: 11, color: '#64748B' }}>{user.email}</span>
+          )}
           <button onClick={exportData} className="btn-hover"
             style={{ padding: '7px 14px', fontSize: 12, fontWeight: 500, border: '1px solid rgba(15,23,42,0.12)', color: '#475569', borderRadius: 6, background: '#FFFFFF' }}
             title="Скачать резервную копию всех данных">
@@ -2194,6 +2368,12 @@ function App() {
             title="Восстановить из резервной копии">
             ⬆ Импорт
           </button>
+          {user && (
+            <button onClick={logout} className="btn-hover"
+              style={{ padding: '7px 14px', fontSize: 12, fontWeight: 500, border: '1px solid rgba(15,23,42,0.12)', color: '#475569', borderRadius: 6, background: '#FFFFFF' }}>
+              Выйти
+            </button>
+          )}
           <button onClick={reset} style={S.resetBtn} className="btn-hover">Сбросить</button>
         </div>
       </div>
