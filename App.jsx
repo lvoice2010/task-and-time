@@ -2186,102 +2186,67 @@ function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load data: from Supabase if logged in, else localStorage
+  // Load data ТОЛЬКО из Supabase
   useEffect(() => {
     if (authChecking) return;
-    if (user && sb) {
-      // Load from Supabase
-      sb.from('plan_data').select('data').eq('user_id', user.id).maybeSingle()
-        .then(({ data, error }) => {
-          if (error) {
-            console.warn('supabase load error — keeping local data', error);
-            // Не затираем — fallback на localStorage
-            try {
-              const raw = localStorage.getItem(STORAGE_KEY);
-              if (raw) setTasks(JSON.parse(raw).tasks || []);
-              const rawW = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
-              if (rawW) {
-                const w = JSON.parse(rawW);
-                setPlans(w.plans || []);
-                setActivePlanId(w.activePlanId || null);
-              }
-            } catch (e) {}
-            setLoaded(true); setPlansLoaded(true);
-            return;
-          }
-          const d = data?.data;
-          if (d && (Array.isArray(d.tasks) && d.tasks.length > 0 || Array.isArray(d.plans) && d.plans.length > 0)) {
-            // Облако имеет данные — берём оттуда
-            setTasks(Array.isArray(d.tasks) ? d.tasks : []);
-            setPlans(Array.isArray(d.plans) ? d.plans : []);
-            setActivePlanId(d.activePlanId || null);
-          } else {
-            // Облако пустое — мигрируем локальные данные
-            let localTasks = [];
-            let localPlans = [];
-            let localActivePlanId = null;
-            try {
-              const raw = localStorage.getItem(STORAGE_KEY);
-              if (raw) localTasks = JSON.parse(raw).tasks || [];
-              const rawW = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
-              if (rawW) {
-                const w = JSON.parse(rawW);
-                localPlans = w.plans || [];
-                localActivePlanId = w.activePlanId || null;
-              }
-            } catch (e) {}
-            setTasks(localTasks);
-            setPlans(localPlans);
-            setActivePlanId(localActivePlanId);
-            if (localTasks.length > 0 || localPlans.length > 0) {
-              console.log(`Мигрирую в облако: ${localTasks.length} задач, ${localPlans.length} планов`);
-            }
-          }
+    if (!user || !sb) return;
+    sb.from('plan_data').select('data').eq('user_id', user.id).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('supabase load error', error);
+          setSyncStatus('error');
           setLoaded(true); setPlansLoaded(true);
-        });
-    } else {
-      // Fallback: localStorage
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw);
-          setTasks(Array.isArray(data.tasks) ? data.tasks : []);
+          return;
         }
-      } catch (e) { console.warn('load failed', e); }
-      try {
-        const raw = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw);
-          setPlans(Array.isArray(data.plans) ? data.plans : []);
-          setActivePlanId(data.activePlanId || null);
+        const d = data?.data;
+        if (d && (Array.isArray(d.tasks) && d.tasks.length > 0 || Array.isArray(d.plans) && d.plans.length > 0)) {
+          setTasks(Array.isArray(d.tasks) ? d.tasks : []);
+          setPlans(Array.isArray(d.plans) ? d.plans : []);
+          setActivePlanId(d.activePlanId || null);
+        } else {
+          // Облако пустое — мигрируем что есть локально (одноразово)
+          let localTasks = [];
+          let localPlans = [];
+          let localActivePlanId = null;
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) localTasks = JSON.parse(raw).tasks || [];
+            const rawW = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
+            if (rawW) {
+              const w = JSON.parse(rawW);
+              localPlans = w.plans || [];
+              localActivePlanId = w.activePlanId || null;
+            }
+          } catch (e) {}
+          setTasks(localTasks);
+          setPlans(localPlans);
+          setActivePlanId(localActivePlanId);
+          // Чистим localStorage после миграции
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(WEEKPLAN_STORAGE_KEY);
+          } catch (e) {}
         }
-      } catch (e) { console.warn('weekplan load failed', e); }
-      setLoaded(true); setPlansLoaded(true);
-    }
+        setLoaded(true); setPlansLoaded(true);
+      });
   }, [user, authChecking]);
 
-  // Save: to Supabase if logged in (debounced), else localStorage
+  // Save: только в Supabase (debounced)
   useEffect(() => {
     if (!loaded || !plansLoaded) return;
-    // localStorage cache always
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks }));
-      localStorage.setItem(WEEKPLAN_STORAGE_KEY, JSON.stringify({ plans, activePlanId }));
-    } catch (e) {}
-
-    if (user && sb) {
-      setSyncStatus('saving');
-      const t = setTimeout(async () => {
-        const { error } = await sb.from('plan_data').upsert({
-          user_id: user.id,
-          data: { tasks, plans, activePlanId },
-          updated_at: new Date().toISOString(),
-        });
-        setSyncStatus(error ? 'error' : 'saved');
-        if (!error) setTimeout(() => setSyncStatus('idle'), 2000);
-      }, 800);
-      return () => clearTimeout(t);
-    }
+    if (!user || !sb) return;
+    setSyncStatus('saving');
+    const t = setTimeout(async () => {
+      const { error } = await sb.from('plan_data').upsert({
+        user_id: user.id,
+        data: { tasks, plans, activePlanId },
+        updated_at: new Date().toISOString(),
+      });
+      setSyncStatus(error ? 'error' : 'saved');
+      if (error) console.warn('supabase save error', error);
+      else setTimeout(() => setSyncStatus('idle'), 2000);
+    }, 600);
+    return () => clearTimeout(t);
   }, [tasks, plans, activePlanId, loaded, plansLoaded, user]);
 
   // ensure activePlanId points to existing plan
@@ -2297,10 +2262,16 @@ function App() {
     return () => clearInterval(i);
   }, []);
 
-  const reset = () => {
-    if (window.confirm('Удалить все задачи и данные?')) {
+  const reset = async () => {
+    if (window.confirm('Удалить все задачи и данные? Это сотрёт данные и в облаке.')) {
       setTasks([]);
+      setPlans([]);
+      setActivePlanId(null);
+      if (user && sb) {
+        await sb.from('plan_data').delete().eq('user_id', user.id);
+      }
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(WEEKPLAN_STORAGE_KEY);
     }
   };
 
