@@ -2194,14 +2194,49 @@ function App() {
       sb.from('plan_data').select('data').eq('user_id', user.id).maybeSingle()
         .then(({ data, error }) => {
           if (error) {
-            console.warn('supabase load error', error);
+            console.warn('supabase load error — keeping local data', error);
+            // Не затираем — fallback на localStorage
+            try {
+              const raw = localStorage.getItem(STORAGE_KEY);
+              if (raw) setTasks(JSON.parse(raw).tasks || []);
+              const rawW = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
+              if (rawW) {
+                const w = JSON.parse(rawW);
+                setPlans(w.plans || []);
+                setActivePlanId(w.activePlanId || null);
+              }
+            } catch (e) {}
             setLoaded(true); setPlansLoaded(true);
             return;
           }
-          const d = data?.data || {};
-          setTasks(Array.isArray(d.tasks) ? d.tasks : []);
-          setPlans(Array.isArray(d.plans) ? d.plans : []);
-          setActivePlanId(d.activePlanId || null);
+          const d = data?.data;
+          if (d && (Array.isArray(d.tasks) && d.tasks.length > 0 || Array.isArray(d.plans) && d.plans.length > 0)) {
+            // Облако имеет данные — берём оттуда
+            setTasks(Array.isArray(d.tasks) ? d.tasks : []);
+            setPlans(Array.isArray(d.plans) ? d.plans : []);
+            setActivePlanId(d.activePlanId || null);
+          } else {
+            // Облако пустое — мигрируем локальные данные
+            let localTasks = [];
+            let localPlans = [];
+            let localActivePlanId = null;
+            try {
+              const raw = localStorage.getItem(STORAGE_KEY);
+              if (raw) localTasks = JSON.parse(raw).tasks || [];
+              const rawW = localStorage.getItem(WEEKPLAN_STORAGE_KEY);
+              if (rawW) {
+                const w = JSON.parse(rawW);
+                localPlans = w.plans || [];
+                localActivePlanId = w.activePlanId || null;
+              }
+            } catch (e) {}
+            setTasks(localTasks);
+            setPlans(localPlans);
+            setActivePlanId(localActivePlanId);
+            if (localTasks.length > 0 || localPlans.length > 0) {
+              console.log(`Мигрирую в облако: ${localTasks.length} задач, ${localPlans.length} планов`);
+            }
+          }
           setLoaded(true); setPlansLoaded(true);
         });
     } else {
