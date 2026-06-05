@@ -1041,7 +1041,13 @@ function KanbanView({ tasks, setTasks, now }) {
             )}
             <KanbanColumn
               column={col} now={now}
-              tasks={filtered.filter(t => t.column === col.id)}
+              tasks={(() => {
+                const list = filtered.filter(t => t.column === col.id);
+                if (col.id === 'done') {
+                  return [...list].sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+                }
+                return list;
+              })()}
               allTasks={tasks}
               onDrop={handleDrop}
               onDragStart={onDragStart}
