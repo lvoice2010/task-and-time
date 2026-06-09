@@ -235,7 +235,7 @@ function TaskCard({ task, isActive, onStart, onPause, onComplete, onOpen, onDrag
   );
 }
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+const MAX_FILE_SIZE = Math.round(4.5 * 1024 * 1024); // 4.5 MB
 
 const fmtFileSize = (bytes) => {
   if (bytes < 1024) return `${bytes} Б`;
@@ -251,7 +251,7 @@ function FileAttach({ files, onChange }) {
     const accepted = [];
     for (const f of picked) {
       if (f.size > MAX_FILE_SIZE) {
-        alert(`Файл "${f.name}" слишком большой (${fmtFileSize(f.size)}). Максимум 2 МБ.`);
+        alert(`Файл "${f.name}" слишком большой (${fmtFileSize(f.size)}). Максимум 4.5 МБ.`);
         continue;
       }
       const dataUrl = await new Promise((res, rej) => {
