@@ -1831,44 +1831,243 @@ function WeekPlanView({ plans, activePlanId, setPlans, setActivePlanId, tasks })
 
 // ===== Mind Map =====
 
-const MM_COLORS = ['#0284C7', '#7C3AED', '#DB2777', '#059669', '#CA8A04', '#DC2626', '#0F172A', '#64748B'];
+const MM_COLORS = ['#E11D2A', '#0F172A', '#EAB308', '#0284C7', '#7C3AED', '#059669', '#DB2777', '#EA580C'];
 const mmClamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const mmNodeW = (text) => mmClamp((text || '').length * 7.4 + 28, 76, 240);
-const MM_NODE_H = 40;
-const mmTrunc = (text) => {
-  const t = text || '';
-  return t.length > 30 ? t.slice(0, 29) + '…' : t;
+
+// depth-dependent typography / box metrics
+const MM_LV = {
+  0: { font: 19, bold: 700, charW: 10.2, maxChars: 13, padX: 24, padY: 18, lineH: 25 },
+  1: { font: 14, bold: 700, charW: 8.0,  maxChars: 24, padX: 18, padY: 11, lineH: 18 },
+  2: { font: 13, bold: 400, charW: 7.0,  maxChars: 34, padX: 4,  padY: 5,  lineH: 17 },
 };
+const mmMetrics = (depth) => MM_LV[depth] || MM_LV[2];
+
+const mmWrap = (text, maxChars) => {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [''];
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const next = cur ? cur + ' ' + w : w;
+    if (next.length > maxChars && cur) { lines.push(cur); cur = w; }
+    else cur = next;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+};
+
+// Normalize stored map to a parent/children tree model.
+// New format: { nodes: [{ id, text, parentId, color, collapsed, icon }] }
+// Old format (nodes with x/y + edges) is migrated by deriving parentId from edges.
+const mmNormalize = (raw) => {
+  if (!raw || !Array.isArray(raw.nodes) || raw.nodes.length === 0) return { nodes: [] };
+  const first = raw.nodes[0];
+  if (first && 'parentId' in first && !raw.edges) {
+    return { nodes: raw.nodes.map(n => ({ collapsed: false, ...n })) };
+  }
+  // migrate from edges
+  const parent = {};
+  (raw.edges || []).forEach(e => { if (!(e.to in parent)) parent[e.to] = e.from; });
+  const ids = new Set(raw.nodes.map(n => n.id));
+  let root = raw.nodes.find(n => !(n.id in parent)) || raw.nodes[0];
+  return {
+    nodes: raw.nodes.map(n => ({
+      id: n.id,
+      text: n.text,
+      color: n.color,
+      icon: n.icon || null,
+      collapsed: false,
+      parentId: n.id === root.id ? null : (parent[n.id] && ids.has(parent[n.id]) ? parent[n.id] : root.id),
+    })),
+  };
+};
+
+const MM_ICONS = [
+  { key: null, label: '—', render: null },
+  { key: 'red', label: '①', color: '#E11D2A', char: '!' },
+  { key: 'green', label: '✓', color: '#059669', char: '✓' },
+  { key: 'gold', label: '★', color: '#CA8A04', char: '★' },
+];
 
 function MindMapView({ plans, activePlanId, setPlans, setActivePlanId }) {
   const activePlan = plans.find(p => p.id === activePlanId) || null;
-  const map = (activePlan && activePlan.mindmap) || { nodes: [], edges: [] };
-  const nodes = map.nodes || [];
-  const edges = map.edges || [];
+  const data = mmNormalize(activePlan && activePlan.mindmap);
+  const nodes = data.nodes;
 
   const svgRef = useRef(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [selectedId, setSelectedId] = useState(null);
-  const [connectMode, setConnectMode] = useState(false);
-  const [connectFrom, setConnectFrom] = useState(null);
 
   const updateMap = (updater) => {
     setPlans(prev => prev.map(p => {
       if (p.id !== activePlanId) return p;
-      const cur = p.mindmap || { nodes: [], edges: [] };
+      const cur = mmNormalize(p.mindmap);
       return { ...p, mindmap: updater(cur) };
     }));
   };
 
-  const screenToWorld = (clientX, clientY) => {
-    const rect = svgRef.current.getBoundingClientRect();
-    return {
-      x: (clientX - rect.left - view.x) / view.scale,
-      y: (clientY - rect.top - view.y) / view.scale,
-    };
-  };
+  // ---- layout (pure, memoized) ----
+  const layout = useMemo(() => {
+    if (nodes.length === 0) return { boxes: {}, links: [], rootId: null, bounds: { w: 0, h: 0 } };
+    const byId = {};
+    nodes.forEach(n => { byId[n.id] = n; });
+    const childrenOf = {};
+    nodes.forEach(n => { childrenOf[n.id] = []; });
+    let root = nodes.find(n => n.parentId == null) || nodes[0];
+    nodes.forEach(n => {
+      if (n.id === root.id) return;
+      const pid = (n.parentId != null && childrenOf[n.parentId]) ? n.parentId : root.id;
+      childrenOf[pid].push(n);
+    });
 
-  // wheel zoom (registered once, uses functional setView so no stale state)
+    const boxes = {};
+    const measure = (n, depth) => {
+      const m = mmMetrics(depth);
+      const lines = mmWrap(n.text || '', m.maxChars);
+      const textW = Math.max(...lines.map(l => l.length * m.charW), 8);
+      const iconExtra = (depth >= 2 && n.icon) ? 20 : 0;
+      const w = (depth <= 1) ? textW + m.padX * 2 : textW + iconExtra;
+      const h = lines.length * m.lineH + m.padY * 2;
+      boxes[n.id] = { node: n, depth, lines, w, h, m, x: 0, y: 0, cy: 0 };
+    };
+    // assign depths via BFS, measure
+    const depthOf = { [root.id]: 0 };
+    measure(root, 0);
+    const queue = [root];
+    while (queue.length) {
+      const cur = queue.shift();
+      const d = depthOf[cur.id];
+      (childrenOf[cur.id] || []).forEach(c => {
+        depthOf[c.id] = d + 1;
+        measure(c, d + 1);
+        queue.push(c);
+      });
+    }
+
+    // leaf-count for side balancing (respect collapse)
+    const leafCount = (n) => {
+      const kids = n.collapsed ? [] : (childrenOf[n.id] || []);
+      if (kids.length === 0) return 1;
+      return kids.reduce((s, c) => s + leafCount(c), 0);
+    };
+    // assign sides to top-level branches (greedy balance), inherit downward
+    const side = {};
+    const top = childrenOf[root.id] || [];
+    let lw = 0, rw = 0;
+    top.forEach(n => {
+      const lc = leafCount(n);
+      if (rw <= lw) { side[n.id] = 1; rw += lc; } else { side[n.id] = -1; lw += lc; }
+    });
+    const applySide = (n, s) => {
+      side[n.id] = s;
+      (childrenOf[n.id] || []).forEach(c => applySide(c, s));
+    };
+    top.forEach(n => applySide(n, side[n.id]));
+
+    // column x by side+depth using max width per column
+    const maxW = {}; // key: side + ':' + depth
+    Object.values(boxes).forEach(b => {
+      if (b.node.id === root.id) return;
+      const k = side[b.node.id] + ':' + b.depth;
+      maxW[k] = Math.max(maxW[k] || 0, b.w);
+    });
+    const gapX = 50;
+    const colStart = {}; // side+':'+depth -> distance from center to inner edge of column
+    const colFor = (s, depth) => {
+      const k = s + ':' + depth;
+      if (k in colStart) return colStart[k];
+      let v;
+      if (depth === 1) v = boxes[root.id].w / 2 + gapX;
+      else v = colFor(s, depth - 1) + (maxW[s + ':' + (depth - 1)] || 0) + gapX;
+      colStart[k] = v;
+      return v;
+    };
+
+    // vertical allocation per side
+    const rowGap = 12;
+    const allocSide = (s) => {
+      let cursor = 0;
+      const walk = (n) => {
+        const b = boxes[n.id];
+        const kids = n.collapsed ? [] : (childrenOf[n.id] || []);
+        if (kids.length === 0) {
+          b.cy = cursor + b.h / 2;
+          cursor += b.h + rowGap;
+          return b.cy;
+        }
+        const cys = kids.map(walk);
+        b.cy = (cys[0] + cys[cys.length - 1]) / 2;
+        return b.cy;
+      };
+      let topY = 0;
+      top.filter(n => side[n.id] === s).forEach(n => { walk(n); });
+      return cursor;
+    };
+    const rightH = allocSide(1);
+    const leftH = allocSide(-1);
+
+    // position x; root centered at 0
+    boxes[root.id].x = -boxes[root.id].w / 2;
+    Object.values(boxes).forEach(b => {
+      if (b.node.id === root.id) return;
+      const s = side[b.node.id];
+      const inner = colFor(s, b.depth);
+      b.x = s === 1 ? inner : -(inner + b.w);
+    });
+
+    // center root vertically against its direct children spread
+    const rootKids = (childrenOf[root.id] || []).filter(n => true);
+    const kidCys = rootKids.map(n => boxes[n.id].cy);
+    const rootCy = kidCys.length ? (Math.min(...kidCys) + Math.max(...kidCys)) / 2 : (Math.max(rightH, leftH)) / 2;
+    boxes[root.id].cy = rootCy;
+    // set box tops
+    Object.values(boxes).forEach(b => { b.y = b.cy - b.h / 2; });
+
+    // connector anchor: pills/root -> vertical center; deep nodes -> baseline (underline)
+    const anchorY = (b) => (b.depth <= 1 ? b.cy : b.y + b.h - 4);
+    const links = [];
+    nodes.forEach(n => {
+      if (n.id === root.id) return;
+      const pid = (n.parentId != null && boxes[n.parentId]) ? n.parentId : root.id;
+      const pb = boxes[pid];
+      const cb = boxes[n.id];
+      if (!pb || pb.node.collapsed) return; // hidden under collapsed parent
+      const s = side[n.id];
+      const x1 = s === 1 ? pb.x + pb.w : pb.x;
+      const y1 = anchorY(pb);
+      const x2 = s === 1 ? cb.x : cb.x + cb.w;
+      const y2 = anchorY(cb);
+      links.push({ id: n.id, x1, y1, x2, y2, color: '#CBD5E1' });
+    });
+
+    // bounds
+    const allB = Object.values(boxes).filter(b => visibleBox(b, byId, childrenOf, root));
+    const minX = Math.min(...allB.map(b => b.x));
+    const maxX = Math.max(...allB.map(b => b.x + b.w));
+    const minY = Math.min(...allB.map(b => b.y));
+    const maxY = Math.max(...allB.map(b => b.y + b.h));
+    return { boxes, links, rootId: root.id, side, childrenOf, byId, bounds: { minX, minY, w: maxX - minX, h: maxY - minY } };
+  }, [nodes]);
+
+  // which boxes are visible (not under a collapsed ancestor)
+  function visibleBox(b, byId, childrenOf, root) {
+    let cur = b.node;
+    while (cur && cur.id !== root.id) {
+      const pid = cur.parentId != null ? cur.parentId : root.id;
+      const p = byId[pid];
+      if (!p) break;
+      if (p.collapsed) return false;
+      cur = p;
+    }
+    return true;
+  }
+
+  const visibleNodes = nodes.filter(n => {
+    const b = layout.boxes[n.id];
+    return b && layout.byId && visibleBox(b, layout.byId, layout.childrenOf, layout.byId[layout.rootId]);
+  });
+
+  // ---- view interactions ----
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
@@ -1878,7 +2077,7 @@ function MindMapView({ plans, activePlanId, setPlans, setActivePlanId }) {
       const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
       setView(v => {
-        const ns = mmClamp(v.scale * factor, 0.3, 2.5);
+        const ns = mmClamp(v.scale * factor, 0.25, 2.5);
         const wx = (cx - v.x) / v.scale, wy = (cy - v.y) / v.scale;
         return { scale: ns, x: cx - wx * ns, y: cy - wy * ns };
       });
@@ -1890,116 +2089,108 @@ function MindMapView({ plans, activePlanId, setPlans, setActivePlanId }) {
   const startPan = (e) => {
     if (e.button !== 0) return;
     setSelectedId(null);
-    const startX = e.clientX, startY = e.clientY;
+    const sx = e.clientX, sy = e.clientY;
     const v0 = view;
-    const onMove = (ev) => setView({ scale: v0.scale, x: v0.x + (ev.clientX - startX), y: v0.y + (ev.clientY - startY) });
+    const onMove = (ev) => setView({ scale: v0.scale, x: v0.x + (ev.clientX - sx), y: v0.y + (ev.clientY - sy) });
     const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
 
-  const startNodeDrag = (e, node) => {
-    e.stopPropagation();
-    if (e.button !== 0) return;
-    if (connectMode) { handleConnectClick(node.id); return; }
-    setSelectedId(node.id);
-    const w0 = screenToWorld(e.clientX, e.clientY);
-    const offX = w0.x - node.x, offY = w0.y - node.y;
-    const onMove = (ev) => {
-      const w = screenToWorld(ev.clientX, ev.clientY);
-      updateMap(cur => ({ ...cur, nodes: cur.nodes.map(n => n.id === node.id ? { ...n, x: w.x - offX, y: w.y - offY } : n) }));
-    };
-    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  const toggleEdge = (a, b) => updateMap(cur => {
-    const ex = cur.edges.find(e => (e.from === a && e.to === b) || (e.from === b && e.to === a));
-    if (ex) return { ...cur, edges: cur.edges.filter(e => e !== ex) };
-    return { ...cur, edges: [...cur.edges, { id: newId(), from: a, to: b }] };
-  });
-
-  const handleConnectClick = (id) => {
-    if (!connectFrom) { setConnectFrom(id); return; }
-    if (connectFrom === id) { setConnectFrom(null); return; }
-    toggleEdge(connectFrom, id);
-    setConnectFrom(null);
-    setConnectMode(false);
-  };
-
-  const addNode = (wx, wy, text, color, connectTo) => {
-    const id = newId();
-    updateMap(cur => ({
-      nodes: [...cur.nodes, { id, text: text || 'Новый узел', x: wx, y: wy, color: color || MM_COLORS[0] }],
-      edges: connectTo ? [...cur.edges, { id: newId(), from: connectTo, to: id }] : cur.edges,
-    }));
-    setSelectedId(id);
-  };
-
-  const addNodeAtCenter = () => {
+  const fitView = () => {
     const rect = svgRef.current.getBoundingClientRect();
-    addNode((rect.width / 2 - view.x) / view.scale, (rect.height / 2 - view.y) / view.scale);
+    const b = layout.bounds;
+    if (!b || !b.w) { setView({ x: rect.width / 2, y: rect.height / 2, scale: 1 }); return; }
+    const pad = 60;
+    const scale = mmClamp(Math.min((rect.width - pad) / b.w, (rect.height - pad) / b.h), 0.25, 1.4);
+    setView({
+      scale,
+      x: rect.width / 2 - (b.minX + b.w / 2) * scale,
+      y: rect.height / 2 - (b.minY + b.h / 2) * scale,
+    });
   };
-
-  const onCanvasDblClick = (e) => {
-    const w = screenToWorld(e.clientX, e.clientY);
-    addNode(w.x, w.y);
-  };
-
-  const selectedNode = nodes.find(n => n.id === selectedId) || null;
-
-  const setNodeText = (id, text) => updateMap(cur => ({ ...cur, nodes: cur.nodes.map(n => n.id === id ? { ...n, text } : n) }));
-  const setNodeColor = (id, color) => updateMap(cur => ({ ...cur, nodes: cur.nodes.map(n => n.id === id ? { ...n, color } : n) }));
-  const deleteSelected = () => {
-    if (!selectedId) return;
-    updateMap(cur => ({ nodes: cur.nodes.filter(n => n.id !== selectedId), edges: cur.edges.filter(e => e.from !== selectedId && e.to !== selectedId) }));
-    setSelectedId(null);
-  };
-  const addChild = () => {
-    if (!selectedNode) return;
-    const childCount = edges.filter(e => e.from === selectedNode.id || e.to === selectedNode.id).length;
-    addNode(selectedNode.x + 200, selectedNode.y + (childCount - 1) * 60, 'Ветка', selectedNode.color, selectedNode.id);
-  };
-
   const zoomBy = (factor) => setView(v => {
     const rect = svgRef.current.getBoundingClientRect();
     const cx = rect.width / 2, cy = rect.height / 2;
-    const ns = mmClamp(v.scale * factor, 0.3, 2.5);
+    const ns = mmClamp(v.scale * factor, 0.25, 2.5);
     const wx = (cx - v.x) / v.scale, wy = (cy - v.y) / v.scale;
     return { scale: ns, x: cx - wx * ns, y: cy - wy * ns };
   });
-  const resetView = () => {
-    const rect = svgRef.current.getBoundingClientRect();
-    setView({ x: rect.width / 2, y: rect.height / 2, scale: 1 });
+
+  // ---- editing ----
+  const ensureRoot = (cur) => {
+    if (cur.nodes.length > 0) return cur;
+    const id = newId();
+    return { nodes: [{ id, text: (activePlan && activePlan.title) || 'Цель', parentId: null, color: '#0284C7', collapsed: false, icon: null }] };
+  };
+  const selectedNode = nodes.find(n => n.id === selectedId) || null;
+  const selDepth = selectedNode ? (layout.boxes[selectedNode.id] || {}).depth : null;
+  const hasChildren = selectedNode ? nodes.some(n => n.parentId === selectedNode.id) : false;
+
+  const addBranch = () => {
+    updateMap(cur => {
+      cur = ensureRoot(cur);
+      const root = cur.nodes.find(n => n.parentId == null) || cur.nodes[0];
+      const id = newId();
+      const idx = cur.nodes.filter(n => n.parentId === root.id).length;
+      const node = { id, text: 'Ветка', parentId: root.id, color: MM_COLORS[idx % MM_COLORS.length], collapsed: false, icon: null };
+      setTimeout(() => setSelectedId(id), 0);
+      return { nodes: [...cur.nodes, node] };
+    });
+  };
+  const addChild = () => {
+    if (!selectedNode) return;
+    const id = newId();
+    updateMap(cur => ({ nodes: [...cur.nodes, { id, text: 'Узел', parentId: selectedNode.id, color: selectedNode.color, collapsed: false, icon: null }] }));
+    setSelectedId(id);
+  };
+  const addSibling = () => {
+    if (!selectedNode || selectedNode.parentId == null) return;
+    const id = newId();
+    updateMap(cur => ({ nodes: [...cur.nodes, { id, text: 'Узел', parentId: selectedNode.parentId, color: selectedNode.color, collapsed: false, icon: null }] }));
+    setSelectedId(id);
+  };
+  const setText = (id, text) => updateMap(cur => ({ nodes: cur.nodes.map(n => n.id === id ? { ...n, text } : n) }));
+  const setColor = (id, color) => updateMap(cur => ({ nodes: cur.nodes.map(n => n.id === id ? { ...n, color } : n) }));
+  const setIcon = (id, icon) => updateMap(cur => ({ nodes: cur.nodes.map(n => n.id === id ? { ...n, icon } : n) }));
+  const toggleCollapse = (id) => updateMap(cur => ({ nodes: cur.nodes.map(n => n.id === id ? { ...n, collapsed: !n.collapsed } : n) }));
+  const deleteNode = () => {
+    if (!selectedNode) return;
+    if (selectedNode.parentId == null) {
+      if (!window.confirm('Удалить корень и всю карту?')) return;
+      updateMap(() => ({ nodes: [] }));
+      setSelectedId(null);
+      return;
+    }
+    updateMap(cur => {
+      const kill = new Set([selectedNode.id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        cur.nodes.forEach(n => { if (n.parentId && kill.has(n.parentId) && !kill.has(n.id)) { kill.add(n.id); changed = true; } });
+      }
+      return { nodes: cur.nodes.filter(n => !kill.has(n.id)) };
+    });
+    setSelectedId(null);
   };
 
   const buildFromPlan = () => {
     if (!activePlan) return;
     if (nodes.length > 0 && !window.confirm('Карта не пуста. Перестроить из плана? Текущие узлы будут заменены.')) return;
-    const nNodes = [], nEdges = [];
-    const centerId = newId();
-    nNodes.push({ id: centerId, text: activePlan.title || '12 недель', x: 0, y: 0, color: '#0F172A' });
-    const goals = activePlan.goals || [];
-    const R = 340;
-    goals.forEach((g, i) => {
-      const ang = (i / Math.max(1, goals.length)) * Math.PI * 2 - Math.PI / 2;
+    const out = [];
+    const rootId = newId();
+    out.push({ id: rootId, text: activePlan.title || '12 недель', parentId: null, color: '#0284C7', collapsed: false, icon: null });
+    (activePlan.goals || []).forEach((g, i) => {
       const gid = newId();
       const color = ((getCompany(g.company) || {}).color) || MM_COLORS[i % MM_COLORS.length];
-      nNodes.push({ id: gid, text: g.title || ('Цель ' + (g.number || i + 1)), x: Math.cos(ang) * R, y: Math.sin(ang) * R, color });
-      nEdges.push({ id: newId(), from: centerId, to: gid });
-      const tactics = g.tactics || [];
-      tactics.forEach((t, j) => {
-        const ta = ang + (j - (tactics.length - 1) / 2) * 0.34;
-        const tr = R + 240;
-        nNodes.push({ id: newId(), text: t.title || ('Тактика ' + (j + 1)), x: Math.cos(ta) * tr, y: Math.sin(ta) * tr, color });
-        nEdges.push({ id: newId(), from: gid, to: nNodes[nNodes.length - 1].id });
+      out.push({ id: gid, text: g.title || ('Цель ' + (g.number || i + 1)), parentId: rootId, color, collapsed: false, icon: null });
+      (g.tactics || []).forEach((t, j) => {
+        out.push({ id: newId(), text: t.title || ('Тактика ' + (j + 1)), parentId: gid, color, collapsed: false, icon: null });
       });
     });
-    updateMap(() => ({ nodes: nNodes, edges: nEdges }));
+    updateMap(() => ({ nodes: out }));
     setSelectedId(null);
-    const rect = svgRef.current.getBoundingClientRect();
-    setView({ x: rect.width / 2, y: rect.height / 2, scale: 0.65 });
+    setTimeout(fitView, 30);
   };
 
   if (plans.length === 0) {
@@ -2012,10 +2203,59 @@ function MindMapView({ plans, activePlanId, setPlans, setActivePlanId }) {
   }
   if (!activePlan) return null;
 
-  const byId = {};
-  nodes.forEach(n => { byId[n.id] = n; });
-
   const tbBtn = { padding: '7px 12px', fontSize: 12, fontWeight: 500, borderRadius: 6, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' };
+
+  const renderNode = (n) => {
+    const b = layout.boxes[n.id];
+    if (!b) return null;
+    const sel = n.id === selectedId;
+    const s = (layout.side && layout.side[n.id]) || 1;
+    const collapsedKids = n.collapsed && nodes.some(c => c.parentId === n.id);
+    const ic = MM_ICONS.find(x => x.key === n.icon);
+    const onDown = (e) => { e.stopPropagation(); if (e.button === 0) setSelectedId(n.id); };
+
+    if (b.depth === 0) {
+      return (
+        <g key={n.id} transform={`translate(${b.x} ${b.y})`} onMouseDown={onDown} style={{ cursor: 'pointer' }}>
+          <rect width={b.w} height={b.h} rx={12} fill="#FFFFFF" stroke={sel ? '#0284C7' : '#9CC9E8'} strokeWidth={sel ? 3 : 2} />
+          <text x={b.w / 2} y={b.m.padY + b.m.lineH / 2 + 2} textAnchor="middle" fontSize={b.m.font} fontWeight={700} fill="#1E40AF" fontFamily="DM Sans" style={{ pointerEvents: 'none' }}>
+            {b.lines.map((ln, i) => <tspan key={i} x={b.w / 2} dy={i === 0 ? 0 : b.m.lineH}>{ln}</tspan>)}
+          </text>
+        </g>
+      );
+    }
+    if (b.depth === 1) {
+      return (
+        <g key={n.id} transform={`translate(${b.x} ${b.y})`} onMouseDown={onDown} style={{ cursor: 'pointer' }}>
+          <rect width={b.w} height={b.h} rx={b.h / 2} fill={n.color || '#0284C7'} stroke={sel ? '#0F172A' : 'none'} strokeWidth={sel ? 2.5 : 0} />
+          <text x={b.w / 2} y={b.m.padY + b.m.lineH / 2 + 1} textAnchor="middle" fontSize={b.m.font} fontWeight={700} fill="#FFFFFF" fontFamily="DM Sans" style={{ pointerEvents: 'none' }}>
+            {b.lines.map((ln, i) => <tspan key={i} x={b.w / 2} dy={i === 0 ? 0 : b.m.lineH}>{ln}</tspan>)}
+          </text>
+          {collapsedKids && <circle cx={s === 1 ? b.w + 7 : -7} cy={b.h / 2} r={5} fill={n.color || '#0284C7'} />}
+        </g>
+      );
+    }
+    // depth >= 2: text + underline, optional icon
+    const baseY = b.h - 4;
+    const txtX = s === 1 ? (n.icon ? 20 : 0) : (n.icon ? b.w - 20 : b.w);
+    const anchor = s === 1 ? 'start' : 'end';
+    return (
+      <g key={n.id} transform={`translate(${b.x} ${b.y})`} onMouseDown={onDown} style={{ cursor: 'pointer' }}>
+        <rect x={-4} y={-2} width={b.w + 8} height={b.h + 4} rx={5} fill={sel ? '#0284C71A' : 'transparent'} />
+        {ic && ic.key && (
+          <g transform={`translate(${s === 1 ? 8 : b.w - 8} ${baseY - b.m.lineH / 2 - 1})`}>
+            <circle r={7} fill={ic.color} />
+            <text textAnchor="middle" y={3.5} fontSize={9} fontWeight={700} fill="#FFFFFF" fontFamily="DM Sans" style={{ pointerEvents: 'none' }}>{ic.char}</text>
+          </g>
+        )}
+        <text x={txtX} y={baseY - b.lines.length * b.m.lineH + b.m.lineH - 3} textAnchor={anchor} fontSize={b.m.font} fontWeight={400} fill="#334155" fontFamily="DM Sans" style={{ pointerEvents: 'none' }}>
+          {b.lines.map((ln, i) => <tspan key={i} x={txtX} dy={i === 0 ? 0 : b.m.lineH}>{ln}</tspan>)}
+        </text>
+        <line x1={s === 1 ? 0 : b.w} y1={baseY} x2={s === 1 ? b.w : 0} y2={baseY} stroke={n.color || '#94A3B8'} strokeWidth={1.5} opacity={0.55} />
+        {collapsedKids && <circle cx={s === 1 ? b.w + 8 : -8} cy={baseY} r={5} fill={n.color || '#64748B'} />}
+      </g>
+    );
+  };
 
   return (
     <div>
@@ -2027,71 +2267,55 @@ function MindMapView({ plans, activePlanId, setPlans, setActivePlanId }) {
           </select>
         )}
         <button onClick={buildFromPlan} className="btn-hover" style={{ ...tbBtn, color: '#0284C7', borderColor: 'rgba(2,132,199,0.3)' }}>⟳ Собрать из плана</button>
-        <button onClick={addNodeAtCenter} className="btn-hover" style={tbBtn}>+ Узел</button>
-        <button onClick={() => { setConnectMode(m => !m); setConnectFrom(null); }} className="btn-hover"
-          style={{ ...tbBtn, color: connectMode ? '#7C3AED' : '#475569', borderColor: connectMode ? '#7C3AED' : 'rgba(15,23,42,0.12)', background: connectMode ? '#7C3AED14' : '#FFFFFF' }}>
-          ↔ Связать
-        </button>
+        <button onClick={addBranch} className="btn-hover" style={tbBtn}>+ Ветка</button>
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
           <button onClick={() => zoomBy(1 / 1.2)} className="btn-hover" style={{ ...tbBtn, padding: '7px 11px' }}>−</button>
           <span className="mono" style={{ fontSize: 11, color: '#64748B', minWidth: 38, textAlign: 'center' }}>{Math.round(view.scale * 100)}%</span>
           <button onClick={() => zoomBy(1.2)} className="btn-hover" style={{ ...tbBtn, padding: '7px 11px' }}>+</button>
-          <button onClick={resetView} className="btn-hover" style={{ ...tbBtn, padding: '7px 11px' }}>⊙</button>
+          <button onClick={fitView} className="btn-hover" style={{ ...tbBtn, padding: '7px 11px' }} title="Вместить">⊡</button>
         </div>
       </div>
 
       {selectedNode && (
         <div style={{ ...S.card, marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input value={selectedNode.text} onChange={e => setNodeText(selectedNode.id, e.target.value)}
-            placeholder="Текст узла" style={{ ...S.input, flex: 1, minWidth: 200 }} />
-          <div style={{ display: 'flex', gap: 5 }}>
-            {MM_COLORS.map(c => (
-              <button key={c} onClick={() => setNodeColor(selectedNode.id, c)} title={c}
-                style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: selectedNode.color === c ? '2px solid #0F172A' : '2px solid transparent', cursor: 'pointer' }} />
-            ))}
-          </div>
-          <button onClick={addChild} className="btn-hover" style={tbBtn}>+ Ветка</button>
-          <button onClick={deleteSelected} className="btn-hover" style={{ ...tbBtn, color: '#DC2626', borderColor: 'rgba(220,38,38,0.3)' }}>Удалить</button>
+          <input value={selectedNode.text} onChange={e => setText(selectedNode.id, e.target.value)}
+            placeholder="Текст узла" style={{ ...S.input, flex: 1, minWidth: 180 }} />
+          {selDepth <= 1 && (
+            <div style={{ display: 'flex', gap: 5 }}>
+              {MM_COLORS.map(c => (
+                <button key={c} onClick={() => setColor(selectedNode.id, c)} title={c}
+                  style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: selectedNode.color === c ? '2px solid #0F172A' : '2px solid transparent', cursor: 'pointer' }} />
+              ))}
+            </div>
+          )}
+          {selDepth >= 2 && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {MM_ICONS.map(ic => (
+                <button key={ic.key || 'none'} onClick={() => setIcon(selectedNode.id, ic.key)} title="Метка"
+                  style={{ ...tbBtn, padding: '5px 9px', color: ic.color || '#475569', fontWeight: 700, borderColor: selectedNode.icon === ic.key ? (ic.color || '#0F172A') : 'rgba(15,23,42,0.12)' }}>{ic.label}</button>
+              ))}
+            </div>
+          )}
+          <button onClick={addChild} className="btn-hover" style={tbBtn}>+ Дочерний</button>
+          {selectedNode.parentId != null && <button onClick={addSibling} className="btn-hover" style={tbBtn}>+ Рядом</button>}
+          {hasChildren && <button onClick={() => toggleCollapse(selectedNode.id)} className="btn-hover" style={tbBtn}>{selectedNode.collapsed ? 'Развернуть' : 'Свернуть'}</button>}
+          <button onClick={deleteNode} className="btn-hover" style={{ ...tbBtn, color: '#DC2626', borderColor: 'rgba(220,38,38,0.3)' }}>Удалить</button>
         </div>
       )}
 
       <div style={{ ...S.card, padding: 0, position: 'relative', height: 'calc(100vh - 230px)', minHeight: 380, overflow: 'hidden', userSelect: 'none' }}>
-        {connectMode && (
-          <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 2, fontSize: 12, color: '#7C3AED', background: '#7C3AED14', padding: '6px 12px', borderRadius: 6, fontWeight: 500 }}>
-            {connectFrom ? 'Кликните второй узел, чтобы связать (или тот же — отмена)' : 'Кликните первый узел'}
-          </div>
-        )}
         {nodes.length === 0 && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', color: '#94A3B8', fontSize: 13, textAlign: 'center' }}>
-            <div>Двойной клик по полю — добавить узел<br />или «⟳ Собрать из плана»</div>
+            <div>«⟳ Собрать из плана» — построить из целей<br />или «+ Ветка» — начать с нуля</div>
           </div>
         )}
-        <svg ref={svgRef} width="100%" height="100%" style={{ display: 'block', cursor: connectMode ? 'crosshair' : 'grab' }}>
+        <svg ref={svgRef} width="100%" height="100%" style={{ display: 'block', cursor: 'grab' }} onMouseDown={startPan}>
           <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
-            <rect x={-50000} y={-50000} width={100000} height={100000} fill="transparent"
-              onMouseDown={startPan} onDoubleClick={onCanvasDblClick} />
-            {edges.map(e => {
-              const a = byId[e.from], b = byId[e.to];
-              if (!a || !b) return null;
-              return <line key={e.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#CBD5E1" strokeWidth={2} />;
+            {layout.links.map(l => {
+              const dx = (l.x2 - l.x1) * 0.5;
+              return <path key={l.id} d={`M ${l.x1} ${l.y1} C ${l.x1 + dx} ${l.y1}, ${l.x2 - dx} ${l.y2}, ${l.x2} ${l.y2}`} fill="none" stroke={l.color} strokeWidth={2} />;
             })}
-            {nodes.map(n => {
-              const w = mmNodeW(n.text);
-              const sel = n.id === selectedId;
-              const isFrom = connectMode && connectFrom === n.id;
-              return (
-                <g key={n.id} transform={`translate(${n.x - w / 2} ${n.y - MM_NODE_H / 2})`}
-                  onMouseDown={e => startNodeDrag(e, n)} style={{ cursor: connectMode ? 'pointer' : 'move' }}>
-                  <title>{n.text}</title>
-                  <rect width={w} height={MM_NODE_H} rx={9}
-                    fill={`${n.color}1A`} stroke={n.color}
-                    strokeWidth={sel ? 3 : 2} strokeDasharray={isFrom ? '5 4' : undefined} />
-                  <text x={w / 2} y={MM_NODE_H / 2 + 1} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={13} fontWeight={600} fill={n.color} fontFamily="DM Sans"
-                    style={{ pointerEvents: 'none' }}>{mmTrunc(n.text)}</text>
-                </g>
-              );
-            })}
+            {visibleNodes.map(renderNode)}
           </g>
         </svg>
       </div>
