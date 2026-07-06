@@ -2416,6 +2416,305 @@ function LoginScreen() {
 
 // ===== Главный компонент =====
 
+// ===== Стримы Сергея (план раскрутки) =====
+const STREAMPLAN_KEY = 'streamplan-progress-v1';
+const STREAMMETRICS_KEY = 'streamplan-metrics-v1';
+
+const STREAM_PLAN = {
+  goal: '100 активных зрителей суммарно (YouTube + Kick + Twitch)',
+  meta: [
+    ['Срок', '3 месяца (фундамент). Реалистично полная цель — 4–6 мес'],
+    ['Формат', 'Кэш + турниры для дипранов (турниры смотрят лучше)'],
+    ['Бюджет', 'до 30 000 ₽/мес'],
+    ['Площадки', 'YouTube (основа) + Kick (параллель) + Twitch (зарубеж). Хаб — Telegram'],
+    ['3 фактора роста', 'Регулярность и расписание · Личность + вебка · Живое общение с чатом'],
+    ['Быстрый рычаг', 'Коллаборации со стримерами + нарезки (Shorts/Клипы)'],
+    ['Монетизация', 'Партнёрка GipsyTeam (рейкбек + призы для гивов), обменники, аффилейт'],
+  ],
+  weeks: [
+    { section: 'МЕСЯЦ 1 — ФУНДАМЕНТ' },
+    { id: 'w1', wk: 'Неделя 1', task: 'Настроить всё: OBS, вебка, сцена, мультистрим. Единый ник/оформление. Завести Telegram-канал + чат.', out: '1–2 тестовых стрима, 3–4 ч. Зафиксировать время старта (вечер МСК).' },
+    { id: 'w2', wk: 'Неделя 2', task: 'Выйти на расписание 4–5 стримов/нед. Начать вести блог на GipsyTeam (Битва блогов), Pokeroff, 2+2.', out: 'Кэш-стримы 3–4 ч. Проговаривать решения, вовлекать чат.' },
+    { id: 'w3', wk: 'Неделя 3', task: 'Запустить нарезки: 2–3 вертикальных клипа с каждого стрима. Найти монтажёра.', out: 'Кэш-стримы + первые Shorts/VK Клипы/TG.' },
+    { id: 'w4', wk: 'Неделя 4', task: 'Наладить конвейер нарезок. Первый мини-фриролл с паролем для подписчиков TG.', out: 'Кэш + анонс фриролла. Пароль в TG за 15 мин до старта.' },
+    { section: 'МЕСЯЦ 2 — РОСТ И КОЛЛАБЫ' },
+    { id: 'w5', wk: 'Неделя 5', task: 'Составить список 8–10 стримеров близкого уровня (100–300 онлайн). Написать 3–4 из них.', out: 'Кэш-стримы + активность в чужих чатах как участник комьюнити.' },
+    { id: 'w6', wk: 'Неделя 6', task: 'Первая коллаборация: совместный стрим или комментирование крупного турнира вдвоём.', out: 'Коллаб-стрим (главное событие недели) + обычные стримы.' },
+    { id: 'w7', wk: 'Неделя 7', task: 'Регулярные фрироллы (еженедельно). Первый гив: билет/бай-ин среди активных в чате + подписчиков.', out: 'Кэш + фриролл + розыгрыш. Разбавить турниром ради диприна.' },
+    { id: 'w8', wk: 'Неделя 8', task: 'Вторая коллаборация. Точечный посев: реклама в тематических TG-каналах о покере.', out: 'Коллаб + турнирный стрим (ставка на дипран = пик онлайна).' },
+    { section: 'МЕСЯЦ 3 — МОНЕТИЗАЦИЯ' },
+    { id: 'w9', wk: 'Неделя 9', task: 'Оформить партнёрство GipsyTeam для стримеров (бот @gipsyteamru_bot). Призы для гивов — от партнёрки.', out: 'Кэш + фрироллы на призах партнёрки.' },
+    { id: 'w10', wk: 'Неделя 10', task: 'Третья коллаборация. Систематизировать нарезки (2–3/день). Оптимизировать заголовки/обложки.', out: 'Коллаб + турнир + серия нарезок.' },
+    { id: 'w11', wk: 'Неделя 11', task: 'Выйти на предложения: обменники (PokerSwap и др.) за баннер, аффилейт-программы.', out: 'Кэш + турнир. Тестировать рекламные интеграции.' },
+    { id: 'w12', wk: 'Неделя 12', task: 'Итоги 3 мес: свериться с метриками на streamscharts. План на след. квартал (цель — стабильно 100+, далее 200+).', out: 'Юбилейный стрим-марафон + крупный гив для комьюнити.' },
+  ],
+  metrics: [
+    ['Пик онлайн (сумма)', '100'],
+    ['Средний онлайн', '60'],
+    ['Подписчики Telegram', '1 500'],
+    ['Подписчики YouTube', '500'],
+    ['Нарезок в неделю', '~15'],
+    ['Коллабы за 3 мес', '3+'],
+  ],
+  budget: [
+    ['Монтажёр нарезок', '15 000 ₽', 'Самое ценное вложение — приток новых зрителей'],
+    ['Посевы / реклама в TG', '7 000 ₽', 'Тематические покерные TG-каналы, микро-стримеры'],
+    ['Фонды на гивы/фрироллы', '4 000 ₽', 'Частично покрывается партнёркой GipsyTeam'],
+    ['Резерв (софт/оборуд.)', '4 000 ₽', 'Микрофон, свет, Restream Pro при необходимости'],
+  ],
+  checklist: [
+    'Единый ник и оформление на всех площадках',
+    'Канал YouTube создан и настроен',
+    'Аккаунт Kick создан',
+    'Twitch-канал (зарубежная русскоязычная аудитория)',
+    'Мультистрим настроен (Restream / Aitum)',
+    'OBS: сцена, вебка, звук проверены',
+    'Telegram-канал + чат, описание и закреп с расписанием',
+    'Расписание стримов зафиксировано (дни + время)',
+    'Профиль GipsyTeam (don_haribon) — блог запущен',
+    'Регистрация на Pokeroff, 2+2',
+    'Договорённость с монтажёром нарезок',
+    'Партнёрка GipsyTeam — написать в @gipsyteamru_bot',
+  ],
+  // столбцы факта: [ключ, короткая шапка, цель к 12 нед]
+  factCols: [
+    ['hours', 'Часы', ''],
+    ['peak', 'Пик', '100'],
+    ['avg', 'Средн', '60'],
+    ['tg', 'TG', '1500'],
+    ['yt', 'YouTube', '500'],
+    ['cuts', 'Нарезки', '15'],
+    ['collab', 'Коллаб/гив', '—'],
+  ],
+};
+
+// Мини-график (SVG): пик онлайна по неделям vs цель 100
+function StreamChart({ metrics }) {
+  const W = 860, H = 200, padL = 34, padR = 14, padT = 14, padB = 24;
+  const target = 100;
+  const vals = [];
+  for (let i = 1; i <= 12; i++) {
+    const raw = metrics['w' + i] && metrics['w' + i].peak;
+    const n = raw === '' || raw == null ? null : Number(raw);
+    vals.push(Number.isFinite(n) ? n : null);
+  }
+  const maxData = Math.max(target, ...vals.filter(v => v != null), 0);
+  const maxY = Math.ceil((maxData * 1.15) / 20) * 20 || 120;
+  const x = (i) => padL + (W - padL - padR) * (i / 11);
+  const y = (v) => padT + (H - padT - padB) * (1 - v / maxY);
+  const pts = vals.map((v, i) => v == null ? null : [x(i), y(v)]).filter(Boolean);
+  const path = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const gridY = [0, maxY / 2, maxY];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {gridY.map((g, i) => (
+        <g key={i}>
+          <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke="rgba(15,23,42,0.08)" />
+          <text x={padL - 6} y={y(g) + 3} textAnchor="end" fontSize="9" fill="#94A3B8" fontFamily="monospace">{g}</text>
+        </g>
+      ))}
+      {/* линия цели */}
+      <line x1={padL} y1={y(target)} x2={W - padR} y2={y(target)} stroke="#059669" strokeWidth="1.2" strokeDasharray="5 4" />
+      <text x={W - padR} y={y(target) - 4} textAnchor="end" fontSize="9" fill="#059669" fontFamily="monospace">цель 100</text>
+      {/* линия факта */}
+      {path && <path d={path} fill="none" stroke="#0284C7" strokeWidth="2" />}
+      {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="3.5" fill="#0284C7" />)}
+      {/* подписи недель */}
+      {vals.map((v, i) => (
+        <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="9" fill="#94A3B8" fontFamily="monospace">{i + 1}</text>
+      ))}
+    </svg>
+  );
+}
+
+function StreamPlanView() {
+  const [done, setDone] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STREAMPLAN_KEY)) || {}; } catch (e) { return {}; }
+  });
+  const [metrics, setMetrics] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STREAMMETRICS_KEY)) || {}; } catch (e) { return {}; }
+  });
+  const toggle = (key) => {
+    setDone(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem(STREAMPLAN_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const setMetric = (wk, col, val) => {
+    setMetrics(prev => {
+      const row = { ...(prev[wk] || {}), [col]: val };
+      const next = { ...prev, [wk]: row };
+      try { localStorage.setItem(STREAMMETRICS_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const weekTasks = STREAM_PLAN.weeks.filter(w => w.id);
+  const doneCount = weekTasks.filter(w => done[w.id]).length;
+  const pct = Math.round((doneCount / weekTasks.length) * 100);
+  const lastPeak = (() => {
+    for (let i = 12; i >= 1; i--) { const v = metrics['w' + i] && metrics['w' + i].peak; if (v) return Number(v); }
+    return null;
+  })();
+
+  const secStyle = { fontWeight: 700, fontSize: 12, letterSpacing: '0.04em', color: '#0284C7',
+    background: '#E0F2FE', padding: '8px 12px', borderRadius: 6, marginTop: 14, marginBottom: 6 };
+  const cardTitle = { fontWeight: 700, fontSize: 14, color: '#0F172A', marginBottom: 10 };
+  const mInput = { width: 52, padding: '4px 4px', fontSize: 12, textAlign: 'center', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 5, fontFamily: 'JetBrains Mono', background: '#FFFFFF' };
+  const th = { fontSize: 10, fontWeight: 700, color: '#475569', padding: '4px 4px', textAlign: 'center', whiteSpace: 'nowrap' };
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      {/* header */}
+      <div style={{ ...S.card, marginBottom: 14, background: 'linear-gradient(135deg,#0F172A,#1E293B)', border: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 20 }}>🎰</span>
+          <div style={{ fontWeight: 700, fontSize: 18, color: '#F8FAFC' }}>Стримы Сергея — план раскрутки</div>
+          <span className="mono" style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4, color: '#38BDF8', background: 'rgba(56,189,248,0.15)' }}>don_haribon</span>
+          {lastPeak != null && (
+            <span className="mono" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, color: lastPeak >= 100 ? '#34D399' : '#F8FAFC', background: 'rgba(255,255,255,0.1)' }}>
+              пик сейчас: {lastPeak} / 100
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 13, color: '#CBD5E1', marginTop: 8 }}>🎯 Цель: {STREAM_PLAN.goal}</div>
+      </div>
+
+      {/* meta */}
+      <div style={{ ...S.card, marginBottom: 14 }}>
+        {STREAM_PLAN.meta.map(([k, v], i) => (
+          <div key={i} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: i < STREAM_PLAN.meta.length - 1 ? '1px solid rgba(15,23,42,0.06)' : 'none' }}>
+            <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', minWidth: 130 }}>{k}</div>
+            <div style={{ fontSize: 13, color: '#0F172A' }}>{v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* progress + weeks */}
+      <div style={{ ...S.card, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={cardTitle}>Контент-план · 12 недель</div>
+          <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: pct === 100 ? '#059669' : '#0284C7' }}>{doneCount}/{weekTasks.length} · {pct}%</span>
+        </div>
+        <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden', marginBottom: 14 }}>
+          <div style={{ height: '100%', width: pct + '%', background: pct === 100 ? '#059669' : '#0284C7', transition: 'width 0.3s' }} />
+        </div>
+        {STREAM_PLAN.weeks.map((w, i) => w.section ? (
+          <div key={i} style={secStyle}>{w.section}</div>
+        ) : (
+          <div key={w.id} onClick={() => toggle(w.id)} className="card-hover"
+            style={{ display: 'flex', gap: 10, padding: '10px', borderRadius: 8, cursor: 'pointer',
+              border: '1px solid rgba(15,23,42,0.06)', marginBottom: 6,
+              background: done[w.id] ? '#F0FDF4' : '#FFFFFF' }}>
+            <div style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 1,
+              border: done[w.id] ? 'none' : '1.5px solid #CBD5E1', background: done[w.id] ? '#059669' : '#FFFFFF',
+              color: '#FFFFFF', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {done[w.id] ? '✓' : ''}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="mono" style={{ fontSize: 11, fontWeight: 600, color: '#0284C7', marginBottom: 3 }}>{w.wk}</div>
+              <div style={{ fontSize: 13, color: done[w.id] ? '#64748B' : '#0F172A', textDecoration: done[w.id] ? 'line-through' : 'none' }}>{w.task}</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 3 }}>▶ {w.out}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* факт по неделям + график */}
+      <div style={{ ...S.card, marginBottom: 14 }}>
+        <div style={cardTitle}>📈 Факт по неделям</div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12 }}>Вноси цифры раз в неделю — график роста строится сам. Источник: streamscharts.com (категория «покер», русский язык).</div>
+        <StreamChart metrics={metrics} />
+        <div style={{ overflowX: 'auto', marginTop: 14 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: 'left' }}>Нед.</th>
+                {STREAM_PLAN.factCols.map(c => <th key={c[0]} style={th}>{c[1]}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 12 }, (_, i) => {
+                const wk = 'w' + (i + 1);
+                const row = metrics[wk] || {};
+                return (
+                  <tr key={wk} style={{ borderTop: '1px solid rgba(15,23,42,0.05)' }}>
+                    <td className="mono" style={{ fontSize: 11, fontWeight: 600, color: '#0284C7', padding: '4px 4px', whiteSpace: 'nowrap' }}>Нед {i + 1}</td>
+                    {STREAM_PLAN.factCols.map(c => (
+                      <td key={c[0]} style={{ padding: '4px 3px', textAlign: 'center' }}>
+                        <input value={row[c[0]] || ''} onChange={e => setMetric(wk, c[0], e.target.value)}
+                          style={mInput} placeholder="—" />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+              <tr style={{ borderTop: '2px solid rgba(15,23,42,0.12)' }}>
+                <td className="mono" style={{ fontSize: 11, fontWeight: 700, color: '#059669', padding: '6px 4px' }}>Цель</td>
+                {STREAM_PLAN.factCols.map(c => (
+                  <td key={c[0]} className="mono" style={{ fontSize: 12, fontWeight: 700, color: '#059669', textAlign: 'center', padding: '6px 3px' }}>{c[2]}</td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {/* metrics targets */}
+        <div style={{ ...S.card, flex: 1, minWidth: 280 }}>
+          <div style={cardTitle}>📊 Метрики — цель к 12-й неделе</div>
+          {STREAM_PLAN.metrics.map(([k, v], i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < STREAM_PLAN.metrics.length - 1 ? '1px solid rgba(15,23,42,0.06)' : 'none' }}>
+              <span style={{ fontSize: 13, color: '#475569' }}>{k}</span>
+              <span className="mono" style={{ fontSize: 13, fontWeight: 600, color: '#059669' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* budget */}
+        <div style={{ ...S.card, flex: 1, minWidth: 280 }}>
+          <div style={cardTitle}>💰 Бюджет · до 30 000 ₽/мес</div>
+          {STREAM_PLAN.budget.map(([k, v, note], i) => (
+            <div key={i} style={{ padding: '7px 0', borderBottom: i < STREAM_PLAN.budget.length - 1 ? '1px solid rgba(15,23,42,0.06)' : 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: '#0F172A', fontWeight: 500 }}>{k}</span>
+                <span className="mono" style={{ fontSize: 13, fontWeight: 600, color: '#D97706' }}>{v}</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{note}</div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '1.5px solid rgba(15,23,42,0.1)' }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>ИТОГО</span>
+            <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#D97706' }}>30 000 ₽</span>
+          </div>
+        </div>
+      </div>
+
+      {/* checklist */}
+      <div style={{ ...S.card, marginTop: 14 }}>
+        <div style={cardTitle}>✅ Чек-лист запуска (до старта)</div>
+        {STREAM_PLAN.checklist.map((c, i) => {
+          const key = 'chk' + i;
+          return (
+            <div key={i} onClick={() => toggle(key)} className="card-hover"
+              style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                background: done[key] ? '#F0FDF4' : '#FFFFFF', border: '1px solid rgba(15,23,42,0.06)', marginBottom: 5 }}>
+              <div style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                border: done[key] ? 'none' : '1.5px solid #CBD5E1', background: done[key] ? '#059669' : '#FFFFFF',
+                color: '#FFFFFF', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {done[key] ? '✓' : ''}
+              </div>
+              <span style={{ fontSize: 13, color: done[key] ? '#64748B' : '#0F172A', textDecoration: done[key] ? 'line-through' : 'none' }}>{c}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
 function App() {
   const [tab, setTab] = useState('kanban');
   const [tasks, setTasks] = useState([]);
@@ -2612,6 +2911,7 @@ function App() {
           <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Канбан</button>
           <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
           <button onClick={() => setTab('mindmap')} style={S.tab(tab === 'mindmap')}>Mind Map</button>
+          <button onClick={() => setTab('stream')} style={S.tab(tab === 'stream')}>Стримы</button>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {syncBadge()}
@@ -2647,6 +2947,9 @@ function App() {
         )}
         {tab === 'mindmap' && (
           <MindMapView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} />
+        )}
+        {tab === 'stream' && (
+          <StreamPlanView />
         )}
       </div>
     </div>
