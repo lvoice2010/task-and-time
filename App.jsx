@@ -2726,6 +2726,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [syncStatus, setSyncStatus] = useState('idle'); // idle | saving | saved | error
+  const lastSyncedAtRef = useRef(null);   // server updated_at we are in sync with
+  const savedSnapshotRef = useRef(null);  // JSON of last successfully saved/loaded data
 
   // auth subscription
   useEffect(() => {
@@ -2744,7 +2746,7 @@ function App() {
   useEffect(() => {
     if (authChecking) return;
     if (!user || !sb) return;
-    sb.from('plan_data').select('data').eq('user_id', user.id).maybeSingle()
+    sb.from('plan_data').select('data, updated_at').eq('user_id', user.id).maybeSingle()
       .then(({ data, error }) => {
         if (error) {
           console.warn('supabase load error', error);
@@ -2752,11 +2754,17 @@ function App() {
           setLoaded(true); setPlansLoaded(true);
           return;
         }
+        lastSyncedAtRef.current = data?.updated_at || null;
         const d = data?.data;
         if (d && (Array.isArray(d.tasks) && d.tasks.length > 0 || Array.isArray(d.plans) && d.plans.length > 0)) {
-          setTasks(Array.isArray(d.tasks) ? d.tasks : []);
-          setPlans(Array.isArray(d.plans) ? d.plans : []);
-          setActivePlanId(d.activePlanId || null);
+          const nt = Array.isArray(d.tasks) ? d.tasks : [];
+          const np = Array.isArray(d.plans) ? d.plans : [];
+          const na = d.activePlanId || null;
+          setTasks(nt);
+          setPlans(np);
+          setActivePlanId(na);
+          // mark as clean so we don't immediately re-upload the freshly loaded data
+          savedSnapshotRef.current = JSON.stringify({ tasks: nt, plans: np, activePlanId: na });
         } else {
           // Облако пустое — мигрируем что есть локально (одноразово)
           let localTasks = [];
@@ -2785,23 +2793,75 @@ function App() {
       });
   }, [user, authChecking]);
 
-  // Save: только в Supabase (debounced)
+  // Save: только в Supabase (debounced, с защитой от затирания чужих изменений)
   useEffect(() => {
     if (!loaded || !plansLoaded) return;
     if (!user || !sb) return;
+    const snapshot = JSON.stringify({ tasks, plans, activePlanId });
+    if (snapshot === savedSnapshotRef.current) return; // нет реальных изменений — не пишем
     setSyncStatus('saving');
     const t = setTimeout(async () => {
-      const { error } = await sb.from('plan_data').upsert({
-        user_id: user.id,
-        data: { tasks, plans, activePlanId },
-        updated_at: new Date().toISOString(),
-      });
-      setSyncStatus(error ? 'error' : 'saved');
-      if (error) console.warn('supabase save error', error);
-      else setTimeout(() => setSyncStatus('idle'), 2000);
-    }, 600);
+      try {
+        // Не перезаписывать, если на сервере данные новее (писала другая вкладка/устройство)
+        const { data: cur, error: chkErr } = await sb.from('plan_data')
+          .select('updated_at').eq('user_id', user.id).maybeSingle();
+        if (chkErr) { console.warn('supabase check error', chkErr); setSyncStatus('error'); return; }
+        const serverAt = cur?.updated_at || null;
+        if (serverAt && lastSyncedAtRef.current && serverAt !== lastSyncedAtRef.current) {
+          // Конфликт: подтягиваем свежие данные вместо затирания
+          const { data: fresh } = await sb.from('plan_data')
+            .select('data, updated_at').eq('user_id', user.id).maybeSingle();
+          const fd = fresh?.data || {};
+          const nt = Array.isArray(fd.tasks) ? fd.tasks : [];
+          const np = Array.isArray(fd.plans) ? fd.plans : [];
+          const na = fd.activePlanId || null;
+          setTasks(nt); setPlans(np); setActivePlanId(na);
+          lastSyncedAtRef.current = fresh?.updated_at || serverAt;
+          savedSnapshotRef.current = JSON.stringify({ tasks: nt, plans: np, activePlanId: na });
+          setSyncStatus('idle');
+          return;
+        }
+        const newAt = new Date().toISOString();
+        const { error } = await sb.from('plan_data').upsert({
+          user_id: user.id,
+          data: { tasks, plans, activePlanId },
+          updated_at: newAt,
+        });
+        if (error) { console.warn('supabase save error', error); setSyncStatus('error'); return; }
+        lastSyncedAtRef.current = newAt;
+        savedSnapshotRef.current = snapshot;
+        setSyncStatus('saved');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } catch (e) {
+        console.warn('supabase save exception', e);
+        setSyncStatus('error');
+      }
+    }, 400);
     return () => clearTimeout(t);
   }, [tasks, plans, activePlanId, loaded, plansLoaded, user]);
+
+  // Подтягивать свежие данные при возврате на вкладку (если нет несохранённых локальных изменений)
+  useEffect(() => {
+    if (!sb || !user) return;
+    const onVis = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const snap = JSON.stringify({ tasks, plans, activePlanId });
+      if (snap !== savedSnapshotRef.current) return; // есть локальные несохранённые изменения — не трогаем
+      const { data } = await sb.from('plan_data').select('data, updated_at').eq('user_id', user.id).maybeSingle();
+      if (!data || !data.updated_at) return;
+      if (data.updated_at !== lastSyncedAtRef.current) {
+        const fd = data.data || {};
+        const nt = Array.isArray(fd.tasks) ? fd.tasks : [];
+        const np = Array.isArray(fd.plans) ? fd.plans : [];
+        const na = fd.activePlanId || null;
+        setTasks(nt); setPlans(np); setActivePlanId(na);
+        lastSyncedAtRef.current = data.updated_at;
+        savedSnapshotRef.current = JSON.stringify({ tasks: nt, plans: np, activePlanId: na });
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [user, tasks, plans, activePlanId]);
 
   // ensure activePlanId points to existing plan
   useEffect(() => {
