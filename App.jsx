@@ -2414,6 +2414,94 @@ function LoginScreen() {
   );
 }
 
+// ===== Синхронизация: слияние по элементам (merge) =====
+
+// Сравнение метки времени сервера без учёта формата (Z vs +00:00)
+const mmSameInstant = (a, b) => {
+  if (!a || !b) return a === b;
+  const ta = Date.parse(a), tb = Date.parse(b);
+  return Number.isFinite(ta) && Number.isFinite(tb) ? ta === tb : a === b;
+};
+
+const mmStripMeta = (o) => { const c = { ...o }; delete c.updatedAt; return c; };
+
+// Подпись пользовательского контента (без служебного updatedAt) — для «менялось ли что-то»
+const syncContentSig = (tasks, plans, activePlanId) =>
+  JSON.stringify({
+    tasks: (tasks || []).map(mmStripMeta),
+    plans: (plans || []).map(mmStripMeta),
+    activePlanId: activePlanId || null,
+  });
+
+const syncNormalizeBlob = (d) => ({
+  tasks: Array.isArray(d && d.tasks) ? d.tasks : [],
+  plans: Array.isArray(d && d.plans) ? d.plans : [],
+  activePlanId: (d && d.activePlanId) || null,
+  deleted: {
+    tasks: (d && d.deleted && d.deleted.tasks) || {},
+    plans: (d && d.deleted && d.deleted.plans) || {},
+  },
+});
+
+const TOMB_TTL = 90 * 86400000; // чистим надгробия старше 90 дней
+const syncPruneTomb = (tomb, now) => {
+  const o = {};
+  for (const k in tomb) if (now - (tomb[k] || 0) < TOMB_TTL) o[k] = tomb[k];
+  return o;
+};
+
+// Проставить updatedAt изменившимся элементам и собрать надгробия удалённых.
+// prevBlob — последнее, что мы сохранили (эталон для сравнения).
+const syncBuildBlob = (tasks, plans, activePlanId, prevBlob, now) => {
+  const prevMap = (arr) => { const m = {}; (arr || []).forEach(x => { m[x.id] = x; }); return m; };
+  const stamp = (arr, pm) => (arr || []).map(item => {
+    const prev = pm[item.id];
+    if (prev && JSON.stringify(mmStripMeta(prev)) === JSON.stringify(mmStripMeta(item))) {
+      return { ...item, updatedAt: prev.updatedAt || 0 }; // не менялся — сохраняем метку
+    }
+    return { ...item, updatedAt: now }; // новый или изменён
+  });
+  const pTasks = prevMap(prevBlob.tasks), pPlans = prevMap(prevBlob.plans);
+  const tasksS = stamp(tasks, pTasks);
+  const plansS = stamp(plans, pPlans);
+  const deleted = {
+    tasks: { ...((prevBlob.deleted && prevBlob.deleted.tasks) || {}) },
+    plans: { ...((prevBlob.deleted && prevBlob.deleted.plans) || {}) },
+  };
+  const curT = new Set((tasks || []).map(t => t.id));
+  const curP = new Set((plans || []).map(p => p.id));
+  (prevBlob.tasks || []).forEach(t => { if (!curT.has(t.id)) deleted.tasks[t.id] = now; });
+  (prevBlob.plans || []).forEach(p => { if (!curP.has(p.id)) deleted.plans[p.id] = now; });
+  curT.forEach(id => { delete deleted.tasks[id]; }); // элемент снова есть — надгробие снимаем
+  curP.forEach(id => { delete deleted.plans[id]; });
+  deleted.tasks = syncPruneTomb(deleted.tasks, now);
+  deleted.plans = syncPruneTomb(deleted.plans, now);
+  return { tasks: tasksS, plans: plansS, activePlanId: activePlanId || null, deleted };
+};
+
+// Слияние локального и серверного блоба: по каждому элементу выигрывает более свежий,
+// удаления уважаются надгробиями, порядок — локальный, затем только-серверные элементы.
+const syncMergeBlob = (local, server) => {
+  const mergeTomb = (a, b) => { const o = { ...(a || {}) }; const bb = b || {}; for (const k in bb) o[k] = Math.max(o[k] || 0, bb[k] || 0); return o; };
+  const delTasks = mergeTomb(local.deleted && local.deleted.tasks, server.deleted && server.deleted.tasks);
+  const delPlans = mergeTomb(local.deleted && local.deleted.plans, server.deleted && server.deleted.plans);
+  const mergeArr = (la, sa, tomb) => {
+    const map = {};
+    (sa || []).forEach(it => { map[it.id] = it; });
+    (la || []).forEach(it => { const ex = map[it.id]; if (!ex || (it.updatedAt || 0) >= (ex.updatedAt || 0)) map[it.id] = it; });
+    const order = [], seen = new Set();
+    (la || []).forEach(it => { if (!seen.has(it.id)) { order.push(it.id); seen.add(it.id); } });
+    (sa || []).forEach(it => { if (!seen.has(it.id)) { order.push(it.id); seen.add(it.id); } });
+    return order.map(id => map[id]).filter(it => { const d = tomb[it.id]; return !(d && d >= (it.updatedAt || 0)); });
+  };
+  const tasks = mergeArr(local.tasks, server.tasks, delTasks);
+  const plans = mergeArr(local.plans, server.plans, delPlans);
+  const planIds = new Set(plans.map(p => p.id));
+  const activePlanId = planIds.has(local.activePlanId) ? local.activePlanId
+    : (planIds.has(server.activePlanId) ? server.activePlanId : (plans[0] ? plans[0].id : null));
+  return { tasks, plans, activePlanId, deleted: { tasks: delTasks, plans: delPlans } };
+};
+
 // ===== Главный компонент =====
 
 // ===== Стримы Сергея (план раскрутки) =====
@@ -2727,7 +2815,8 @@ function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [syncStatus, setSyncStatus] = useState('idle'); // idle | saving | saved | error
   const lastSyncedAtRef = useRef(null);   // server updated_at we are in sync with
-  const savedSnapshotRef = useRef(null);  // JSON of last successfully saved/loaded data
+  const savedSnapshotRef = useRef(null);  // syncContentSig of last saved/loaded content (для «менялось ли»)
+  const savedBlobRef = useRef(null);      // последний сохранённый блоб {tasks,plans,activePlanId,deleted} с метками
 
   // auth subscription
   useEffect(() => {
@@ -2757,14 +2846,13 @@ function App() {
         lastSyncedAtRef.current = data?.updated_at || null;
         const d = data?.data;
         if (d && (Array.isArray(d.tasks) && d.tasks.length > 0 || Array.isArray(d.plans) && d.plans.length > 0)) {
-          const nt = Array.isArray(d.tasks) ? d.tasks : [];
-          const np = Array.isArray(d.plans) ? d.plans : [];
-          const na = d.activePlanId || null;
-          setTasks(nt);
-          setPlans(np);
-          setActivePlanId(na);
-          // mark as clean so we don't immediately re-upload the freshly loaded data
-          savedSnapshotRef.current = JSON.stringify({ tasks: nt, plans: np, activePlanId: na });
+          const blob = syncNormalizeBlob(d);
+          setTasks(blob.tasks);
+          setPlans(blob.plans);
+          setActivePlanId(blob.activePlanId);
+          // помечаем как «чисто», чтобы не перезаливать только что загруженное
+          savedBlobRef.current = blob;
+          savedSnapshotRef.current = syncContentSig(blob.tasks, blob.plans, blob.activePlanId);
         } else {
           // Облако пустое — мигрируем что есть локально (одноразово)
           let localTasks = [];
@@ -2793,27 +2881,46 @@ function App() {
       });
   }, [user, authChecking]);
 
-  // Save: только в Supabase (debounced).
-  // Ключевая защита от «возврата задач»: НЕ сохраняем, если данные не менялись —
-  // простаивающая вкладка/устройство никогда не пишет и не может затереть свежие данные.
-  // Локальные изменения при этом никогда не отбрасываются.
+  // Save в Supabase (debounced) со слиянием по элементам.
+  // 1) Не пишем, если контент не менялся (простаивающая вкладка не может затереть).
+  // 2) Если сервер изменился с момента нашей синхронизации — СЛИВАЕМ локальное и серверное
+  //    (по updatedAt каждого элемента + надгробия удалённых), а не перезаписываем.
   useEffect(() => {
     if (!loaded || !plansLoaded) return;
     if (!user || !sb) return;
-    const snapshot = JSON.stringify({ tasks, plans, activePlanId });
-    if (snapshot === savedSnapshotRef.current) return; // нет реальных изменений — не пишем
+    const sig = syncContentSig(tasks, plans, activePlanId);
+    if (sig === savedSnapshotRef.current) return; // нет реальных изменений — не пишем
     setSyncStatus('saving');
     const t = setTimeout(async () => {
       try {
+        const now = Date.now();
+        const prevBlob = savedBlobRef.current || { tasks: [], plans: [], activePlanId: null, deleted: { tasks: {}, plans: {} } };
+        let toSave = syncBuildBlob(tasks, plans, activePlanId, prevBlob, now);
+        let merged = false;
+        // сверяем версию сервера
+        const { data: cur, error: chkErr } = await sb.from('plan_data')
+          .select('updated_at').eq('user_id', user.id).maybeSingle();
+        if (chkErr) { console.warn('supabase check error', chkErr); setSyncStatus('error'); return; }
+        const serverAt = cur ? cur.updated_at : null;
+        if (serverAt && lastSyncedAtRef.current && !mmSameInstant(serverAt, lastSyncedAtRef.current)) {
+          const { data: fresh } = await sb.from('plan_data')
+            .select('data, updated_at').eq('user_id', user.id).maybeSingle();
+          if (fresh && fresh.data) {
+            toSave = syncMergeBlob(toSave, syncNormalizeBlob(fresh.data));
+            merged = true;
+          }
+        }
         const newAt = new Date().toISOString();
         const { error } = await sb.from('plan_data').upsert({
           user_id: user.id,
-          data: { tasks, plans, activePlanId },
+          data: { ...toSave, updatedAt: newAt },
           updated_at: newAt,
         });
         if (error) { console.warn('supabase save error', error); setSyncStatus('error'); return; }
         lastSyncedAtRef.current = newAt;
-        savedSnapshotRef.current = snapshot;
+        savedBlobRef.current = toSave;
+        savedSnapshotRef.current = syncContentSig(toSave.tasks, toSave.plans, toSave.activePlanId);
+        if (merged) { setTasks(toSave.tasks); setPlans(toSave.plans); setActivePlanId(toSave.activePlanId); }
         setSyncStatus('saved');
         setTimeout(() => setSyncStatus('idle'), 2000);
       } catch (e) {
@@ -2825,28 +2932,20 @@ function App() {
   }, [tasks, plans, activePlanId, loaded, plansLoaded, user]);
 
   // Подтягивать свежие данные при возврате на вкладку — только если нет несохранённых
-  // локальных изменений (никогда не затираем то, что пользователь только что сделал).
+  // локальных изменений (иначе слияние сделает сам эффект сохранения).
   useEffect(() => {
     if (!sb || !user) return;
-    const sameInstant = (a, b) => {
-      if (!a || !b) return a === b;
-      const ta = Date.parse(a), tb = Date.parse(b);
-      return Number.isFinite(ta) && Number.isFinite(tb) ? ta === tb : a === b;
-    };
     const onVis = async () => {
       if (document.visibilityState !== 'visible') return;
-      const snap = JSON.stringify({ tasks, plans, activePlanId });
-      if (snap !== savedSnapshotRef.current) return; // есть локальные несохранённые изменения — не трогаем
+      if (syncContentSig(tasks, plans, activePlanId) !== savedSnapshotRef.current) return;
       const { data } = await sb.from('plan_data').select('data, updated_at').eq('user_id', user.id).maybeSingle();
       if (!data || !data.updated_at) return;
-      if (!sameInstant(data.updated_at, lastSyncedAtRef.current)) {
-        const fd = data.data || {};
-        const nt = Array.isArray(fd.tasks) ? fd.tasks : [];
-        const np = Array.isArray(fd.plans) ? fd.plans : [];
-        const na = fd.activePlanId || null;
-        setTasks(nt); setPlans(np); setActivePlanId(na);
+      if (!mmSameInstant(data.updated_at, lastSyncedAtRef.current)) {
+        const blob = syncNormalizeBlob(data.data);
+        setTasks(blob.tasks); setPlans(blob.plans); setActivePlanId(blob.activePlanId);
         lastSyncedAtRef.current = data.updated_at;
-        savedSnapshotRef.current = JSON.stringify({ tasks: nt, plans: np, activePlanId: na });
+        savedBlobRef.current = blob;
+        savedSnapshotRef.current = syncContentSig(blob.tasks, blob.plans, blob.activePlanId);
       }
     };
     document.addEventListener('visibilitychange', onVis);
@@ -2874,6 +2973,10 @@ function App() {
       if (user && sb) {
         await sb.from('plan_data').delete().eq('user_id', user.id);
       }
+      // синхронизируем состояние синка, чтобы эффект не начал перезаливать удалённое
+      lastSyncedAtRef.current = null;
+      savedBlobRef.current = { tasks: [], plans: [], activePlanId: null, deleted: { tasks: {}, plans: {} } };
+      savedSnapshotRef.current = syncContentSig([], [], null);
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(WEEKPLAN_STORAGE_KEY);
     }
