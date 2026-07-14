@@ -2793,7 +2793,10 @@ function App() {
       });
   }, [user, authChecking]);
 
-  // Save: только в Supabase (debounced, с защитой от затирания чужих изменений)
+  // Save: только в Supabase (debounced).
+  // Ключевая защита от «возврата задач»: НЕ сохраняем, если данные не менялись —
+  // простаивающая вкладка/устройство никогда не пишет и не может затереть свежие данные.
+  // Локальные изменения при этом никогда не отбрасываются.
   useEffect(() => {
     if (!loaded || !plansLoaded) return;
     if (!user || !sb) return;
@@ -2802,25 +2805,6 @@ function App() {
     setSyncStatus('saving');
     const t = setTimeout(async () => {
       try {
-        // Не перезаписывать, если на сервере данные новее (писала другая вкладка/устройство)
-        const { data: cur, error: chkErr } = await sb.from('plan_data')
-          .select('updated_at').eq('user_id', user.id).maybeSingle();
-        if (chkErr) { console.warn('supabase check error', chkErr); setSyncStatus('error'); return; }
-        const serverAt = cur?.updated_at || null;
-        if (serverAt && lastSyncedAtRef.current && serverAt !== lastSyncedAtRef.current) {
-          // Конфликт: подтягиваем свежие данные вместо затирания
-          const { data: fresh } = await sb.from('plan_data')
-            .select('data, updated_at').eq('user_id', user.id).maybeSingle();
-          const fd = fresh?.data || {};
-          const nt = Array.isArray(fd.tasks) ? fd.tasks : [];
-          const np = Array.isArray(fd.plans) ? fd.plans : [];
-          const na = fd.activePlanId || null;
-          setTasks(nt); setPlans(np); setActivePlanId(na);
-          lastSyncedAtRef.current = fresh?.updated_at || serverAt;
-          savedSnapshotRef.current = JSON.stringify({ tasks: nt, plans: np, activePlanId: na });
-          setSyncStatus('idle');
-          return;
-        }
         const newAt = new Date().toISOString();
         const { error } = await sb.from('plan_data').upsert({
           user_id: user.id,
@@ -2840,16 +2824,22 @@ function App() {
     return () => clearTimeout(t);
   }, [tasks, plans, activePlanId, loaded, plansLoaded, user]);
 
-  // Подтягивать свежие данные при возврате на вкладку (если нет несохранённых локальных изменений)
+  // Подтягивать свежие данные при возврате на вкладку — только если нет несохранённых
+  // локальных изменений (никогда не затираем то, что пользователь только что сделал).
   useEffect(() => {
     if (!sb || !user) return;
+    const sameInstant = (a, b) => {
+      if (!a || !b) return a === b;
+      const ta = Date.parse(a), tb = Date.parse(b);
+      return Number.isFinite(ta) && Number.isFinite(tb) ? ta === tb : a === b;
+    };
     const onVis = async () => {
       if (document.visibilityState !== 'visible') return;
       const snap = JSON.stringify({ tasks, plans, activePlanId });
       if (snap !== savedSnapshotRef.current) return; // есть локальные несохранённые изменения — не трогаем
       const { data } = await sb.from('plan_data').select('data, updated_at').eq('user_id', user.id).maybeSingle();
       if (!data || !data.updated_at) return;
-      if (data.updated_at !== lastSyncedAtRef.current) {
+      if (!sameInstant(data.updated_at, lastSyncedAtRef.current)) {
         const fd = data.data || {};
         const nt = Array.isArray(fd.tasks) ? fd.tasks : [];
         const np = Array.isArray(fd.plans) ? fd.plans : [];
