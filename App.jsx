@@ -1106,13 +1106,13 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
         style={{ minHeight: 54, padding: 5, borderRadius: 8,
           border: `1px ${dragOver === key ? 'dashed' : 'solid'} ${dragOver === key ? '#0284C7' : 'rgba(15,23,42,0.08)'}`,
           background: dragOver === key ? 'rgba(2,132,199,0.06)' : (isToday ? 'rgba(2,132,199,0.03)' : '#FFFFFF') }}>
-        <div style={{ maxHeight: 322, overflowY: list.length > 5 ? 'auto' : 'visible', paddingRight: list.length > 5 ? 3 : 0 }}>
+        <div style={{ maxHeight: 258, overflowY: list.length > 4 ? 'auto' : 'visible', paddingRight: list.length > 4 ? 3 : 0 }}>
           {list.map(t => (
             <RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
           ))}
           {list.length === 0 && <div style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', padding: '10px 0' }}>—</div>}
         </div>
-        {list.length > 5 && <div style={{ fontSize: 9, color: '#94A3B8', textAlign: 'right', marginTop: 2 }}>{list.length} задач</div>}
+        {list.length > 4 && <div style={{ fontSize: 9, color: '#94A3B8', textAlign: 'right', marginTop: 2 }}>{list.length} задач</div>}
         {lane === 'backlog' && (
           addFor === roleId ? (
             <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
