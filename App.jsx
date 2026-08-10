@@ -962,12 +962,13 @@ function RoleCard({ task, now, onOpen, onDragStart, onAction }) {
   const status = taskStatus(task);
   const total = taskTotal(task, now);
   const q = getQuadrant(effQuadrant(task));
+  const role = getRole(effRole(task));
   const isRock = !!task.rock;
   const isDone = effLane(task) === 'done';
   return (
     <div draggable onDragStart={(e) => onDragStart(e, task.id)} className="card-hover"
       style={{ ...S.card, padding: '7px 9px', marginBottom: 6, cursor: 'grab',
-        borderLeft: `3px solid ${q ? q.color : 'rgba(15,23,42,0.15)'}` }}>
+        borderLeft: `3px solid ${role ? role.color : 'rgba(15,23,42,0.15)'}` }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
         <button onClick={() => onAction('rock', task.id)} title="Большой камень недели"
           style={{ fontSize: 13, lineHeight: 1, color: isRock ? '#CA8A04' : '#CBD5E1', padding: 0 }}>★</button>
@@ -983,6 +984,9 @@ function RoleCard({ task, now, onOpen, onDragStart, onAction }) {
         </button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+        {role
+          ? <span style={{ fontSize: 9, fontWeight: 600, color: role.color, background: `${role.color}14`, padding: '1px 5px', borderRadius: 3 }}>{role.short}</span>
+          : <span style={{ fontSize: 9, fontWeight: 600, color: '#DB2777' }}>нет роли</span>}
         {status === 'running'
           ? <button onClick={() => onAction('pause', task.id)} className="btn-hover" style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#FEF3C7', color: '#D97706' }}>⏸</button>
           : <button onClick={() => onAction('start', task.id)} className="btn-hover" style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#D1FAE5', color: '#059669' }}>▶</button>}
@@ -1002,6 +1006,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newRole, setNewRole] = useState(ROLES[0].id);
+  const [roleFilter, setRoleFilter] = useState(null); // null=все | roleId | '__none'
 
   const activePlan = plans ? plans.find(p => p.id === activePlanId) : null;
   const planWeek = (() => {
@@ -1017,18 +1022,18 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const todayCount = tasks.filter(t => effLane(t) === 'today').length;
   const todayHasQ2 = tasks.some(t => effLane(t) === 'today' && effQuadrant(t) === 2);
 
-  const moveTo = (id, roleId, lane) => {
+  const moveToLane = (id, lane) => {
     if (lane === 'today') {
       const t = tasks.find(x => x.id === id);
       if (t && effLane(t) !== 'today' && todayCount >= MAX_TODAY) {
         if (!window.confirm(`На сегодня уже ${MAX_TODAY} дела. По методу — не больше трёх. Всё равно добавить?`)) return;
       }
     }
-    const role = getRole(roleId);
     const nowTs = Date.now();
     setTasks(prev => prev.map(t => {
       if (t.id !== id) return t;
-      const patch = { ...t, role: roleId, company: role ? (role.company || 'personal') : t.company, quadrant: t.quadrant || effQuadrant(t) || null, column: lane };
+      // сохраняем роль и квадрант при перемещении между колонками
+      const patch = { ...t, role: t.role || effRole(t), quadrant: t.quadrant || effQuadrant(t) || null, column: lane };
       if (lane === 'done') {
         patch.sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
         patch.completedAt = t.completedAt || nowTs;
@@ -1039,11 +1044,11 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
     }));
   };
 
-  const onDrop = (roleId, lane) => {
+  const onDrop = (lane) => {
     const id = draggedId.current;
     draggedId.current = null;
     setDragOver(null);
-    if (id) moveTo(id, roleId, lane);
+    if (id) moveToLane(id, lane);
   };
 
   const action = (type, id, payload) => {
@@ -1085,42 +1090,24 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   };
 
   const lanes = showDone ? [...ROLE_LANES, { id: 'done', title: 'Сделано', icon: '✓' }] : ROLE_LANES;
-  const gridCols = `150px ${lanes.map(() => '1fr').join(' ')}`;
 
-  const roleTasks = (roleId, lane) => {
-    const list = tasks.filter(t => effRole(t) === roleId && effLane(t) === lane);
+  const columnTasks = (lane) => {
+    const list = tasks.filter(t => effLane(t) === lane && (
+      roleFilter == null ? true : (roleFilter === '__none' ? effRole(t) == null : effRole(t) === roleFilter)
+    ));
     if (lane === 'done') return list.sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-    return list.sort((a, b) => (b.rock ? 1 : 0) - (a.rock ? 1 : 0)); // камни сверху
+    const roleIdx = (t) => { const i = ROLES.findIndex(r => r.id === effRole(t)); return i < 0 ? 99 : i; };
+    return list.sort((a, b) => ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)) || (roleIdx(a) - roleIdx(b)));
   };
 
-  const unsorted = tasks.filter(t => effRole(t) == null && effLane(t) !== 'done');
-
-  const laneCell = (roleId, lane) => {
-    const key = `${roleId}:${lane}`;
-    const list = roleTasks(roleId, lane);
-    const isToday = lane === 'today';
-    return (
-      <div key={key}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(key); }}
-        onDragLeave={() => setDragOver(d => d === key ? null : d)}
-        onDrop={() => onDrop(roleId, lane)}
-        style={{ minHeight: 54, padding: 5, borderRadius: 8,
-          border: `1px ${dragOver === key ? 'dashed' : 'solid'} ${dragOver === key ? '#0284C7' : 'rgba(15,23,42,0.08)'}`,
-          background: dragOver === key ? 'rgba(2,132,199,0.06)' : (isToday ? 'rgba(2,132,199,0.03)' : '#FFFFFF') }}>
-        <div style={{ maxHeight: 258, overflowY: list.length > 4 ? 'auto' : 'visible', paddingRight: list.length > 4 ? 3 : 0 }}>
-          {list.map(t => (
-            <RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
-          ))}
-          {list.length === 0 && <div style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', padding: '10px 0' }}>—</div>}
-        </div>
-        {list.length > 4 && <div style={{ fontSize: 9, color: '#94A3B8', textAlign: 'right', marginTop: 2 }}>{list.length} задач</div>}
-      </div>
-    );
-  };
+  const noneCount = tasks.filter(t => effRole(t) == null && effLane(t) !== 'done').length;
+  const filterGoal = (roleFilter && roleFilter !== '__none') ? goalFor(roleFilter) : null;
+  const filterGoalPct = filterGoal ? computeProgress(filterGoal.startValue, filterGoal.targetValue, filterGoal.currentValue) : null;
+  const filterRole = (roleFilter && roleFilter !== '__none') ? getRole(roleFilter) : null;
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, color: '#475569' }}>
           Сегодня: <b style={{ color: todayCount > MAX_TODAY ? '#DC2626' : '#0F172A' }}>{todayCount}</b> / {MAX_TODAY}
           {!todayHasQ2 && todayCount > 0 && <span style={{ color: '#CA8A04', marginLeft: 8 }}>⚠ нет дела из Q2 (важное/несрочное)</span>}
@@ -1148,56 +1135,52 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
         </div>
       )}
 
-      <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, minWidth: 720, alignItems: 'stretch' }}>
-          <div />
-          {lanes.map(l => (
-            <div key={l.id} style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, padding: '4px', borderRadius: 6,
-              color: l.id === 'today' ? '#0284C7' : '#64748B', background: l.id === 'today' ? '#DBEAFE' : 'transparent' }}>
-              {l.icon} {l.title}
-            </div>
-          ))}
-          {ROLES.map(role => {
-            const goal = goalFor(role.id);
-            const pct = goal ? computeProgress(goal.startValue, goal.targetValue, goal.currentValue) : null;
-            return (
-              <React.Fragment key={role.id}>
-                <div style={{ borderRadius: 8, padding: 8, background: `${role.color}12`, alignSelf: 'stretch' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: role.color }}>{role.short}</div>
-                  {goal ? (
-                    <div style={{ marginTop: 5 }}>
-                      <div style={{ fontSize: 10, color: '#475569', lineHeight: 1.25, wordBreak: 'break-word' }}>🎯 {goal.title || 'Без названия'}</div>
-                      <div style={{ height: 4, background: 'rgba(15,23,42,0.1)', borderRadius: 2, marginTop: 4 }}>
-                        <div style={{ width: `${pct == null ? 0 : pct}%`, height: '100%', background: role.color, borderRadius: 2 }} />
-                      </div>
-                      <div className="mono" style={{ fontSize: 9, color: '#64748B', marginTop: 2 }}>
-                        {pct == null ? '—' : `${Math.round(pct)}%`}{planWeek ? ` · нед. ${planWeek}/${TOTAL_WEEKS}` : ''}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 5 }}>цель не задана</div>
-                  )}
-                </div>
-                {lanes.map(l => laneCell(role.id, l.id))}
-              </React.Fragment>
-            );
-          })}
-          {unsorted.length > 0 && (
-            <React.Fragment>
-              <div style={{ borderRadius: 8, padding: 8, background: 'rgba(219,39,119,0.1)', border: '1px dashed #DB2777' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#DB2777' }}>Личное — разобрать</div>
-                <div style={{ fontSize: 10, color: '#993556', marginTop: 4 }}>перетащи в «Семья» или «Забота о себе»</div>
-              </div>
-              <div style={{ gridColumn: `2 / span ${lanes.length}`, padding: 5, borderRadius: 8, border: '1px solid rgba(15,23,42,0.08)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {unsorted.map(t => (
-                  <div key={t.id} style={{ width: 200 }}>
-                    <RoleCard task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
-                  </div>
-                ))}
-              </div>
-            </React.Fragment>
-          )}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+        <button onClick={() => setRoleFilter(null)} style={S.chip(roleFilter == null, '#0284C7')}>Все роли</button>
+        {ROLES.map(r => (
+          <button key={r.id} onClick={() => setRoleFilter(roleFilter === r.id ? null : r.id)} style={S.chip(roleFilter === r.id, r.color)}>{r.short}</button>
+        ))}
+        {noneCount > 0 && (
+          <button onClick={() => setRoleFilter(roleFilter === '__none' ? null : '__none')} style={S.chip(roleFilter === '__none', '#DB2777')}>Без роли · {noneCount}</button>
+        )}
+      </div>
+
+      {filterGoal && (
+        <div style={{ ...S.card, marginBottom: 12, padding: '8px 12px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: filterRole ? filterRole.color : '#0F172A' }}>🎯 {filterGoal.title || 'Цель'}</span>
+          <div style={{ flex: 1, minWidth: 120, height: 6, background: 'rgba(15,23,42,0.08)', borderRadius: 3 }}>
+            <div style={{ width: `${filterGoalPct == null ? 0 : filterGoalPct}%`, height: '100%', background: filterRole ? filterRole.color : '#0284C7', borderRadius: 3 }} />
+          </div>
+          <span className="mono" style={{ fontSize: 11, color: '#64748B' }}>{filterGoalPct == null ? '—' : `${Math.round(filterGoalPct)}%`}{planWeek ? ` · нед. ${planWeek}/${TOTAL_WEEKS}` : ''}</span>
         </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
+        {lanes.map(l => {
+          const list = columnTasks(l.id);
+          const isToday = l.id === 'today';
+          const key = l.id;
+          return (
+            <div key={key}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(key); }}
+              onDragLeave={() => setDragOver(d => d === key ? null : d)}
+              onDrop={() => onDrop(l.id)}
+              style={{ flexShrink: 0, width: 300, borderRadius: 10, padding: 8,
+                background: isToday ? 'rgba(2,132,199,0.05)' : 'rgba(15,23,42,0.02)',
+                border: `1px ${dragOver === key ? 'dashed' : 'solid'} ${dragOver === key ? '#0284C7' : 'rgba(15,23,42,0.08)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '0 2px' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: isToday ? '#0284C7' : '#334155' }}>{l.icon} {l.title}</span>
+                <span className="mono" style={{ fontSize: 11, color: '#94A3B8', marginLeft: 'auto' }}>{list.length}</span>
+              </div>
+              <div style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto', paddingRight: 2 }}>
+                {list.map(t => (
+                  <RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
+                ))}
+                {list.length === 0 && <div style={{ fontSize: 11, color: '#CBD5E1', textAlign: 'center', padding: '16px 0' }}>перетащи сюда</div>}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {openTaskId && tasks.find(t => t.id === openTaskId) && (
