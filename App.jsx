@@ -1947,6 +1947,15 @@ function PlanSettings({ plan, onSave, onCancel, onDelete }) {
               </div>
             </div>
             <div>
+              {label('Роль (цель роли)')}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <button onClick={() => updateGoal(goal.id, { role: null })} style={S.chip(!goal.role, '#64748B')} title="Определяется по компании">авто</button>
+                {ROLES.map(r => (
+                  <button key={r.id} onClick={() => updateGoal(goal.id, { role: goal.role === r.id ? null : r.id })} style={S.chip(goal.role === r.id, r.color)}>{r.short}</button>
+                ))}
+              </div>
+            </div>
+            <div>
               {label('Начальное значение')}
               <input value={goal.startValue} onChange={e => updateGoal(goal.id, { startValue: e.target.value })}
                 placeholder="67 кг" style={{ ...S.input, padding: '6px 10px', fontSize: 13 }} />
