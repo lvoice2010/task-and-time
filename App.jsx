@@ -1107,11 +1107,12 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
     setNewTitle('');
   };
 
+  const qKey = (t) => effQuadrant(t) || 99; // без квадранта — в конец
   const laneList = (lane) => {
     const roleIdx = (t) => { const i = ROLES.findIndex(r => r.id === effRole(t)); return i < 0 ? 99 : i; };
-    return tasks.filter(t => effLane(t) === lane).sort((a, b) => ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)) || (roleIdx(a) - roleIdx(b)));
+    return tasks.filter(t => effLane(t) === lane).sort((a, b) => (qKey(a) - qKey(b)) || ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)) || (roleIdx(a) - roleIdx(b)));
   };
-  const roleBacklog = (roleId) => tasks.filter(t => effLane(t) === 'backlog' && effRole(t) === roleId).sort((a, b) => (b.rock ? 1 : 0) - (a.rock ? 1 : 0));
+  const roleBacklog = (roleId) => tasks.filter(t => effLane(t) === 'backlog' && effRole(t) === roleId).sort((a, b) => (qKey(a) - qKey(b)) || ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)));
   const noneBacklog = tasks.filter(t => effLane(t) === 'backlog' && effRole(t) == null);
   const doneList = tasks.filter(t => effLane(t) === 'done').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
