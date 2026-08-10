@@ -44,8 +44,8 @@ const getColumn = (id) => COLUMNS.find(c => c.id === id);
 
 // ===== Роли (Кови) и квадранты (Эйзенхауэр) =====
 const ROLES = [
-  { id: 'kg',     name: 'Рук-ль КиберГусли',         short: 'КиберГусли', color: '#2563EB', company: 'kg' },
   { id: 'kc',     name: 'Рук-ль КЦ',                 short: 'КЦ',         color: '#DC2626', company: 'kc' },
+  { id: 'kg',     name: 'Рук-ль КиберГусли',         short: 'КиберГусли', color: '#2563EB', company: 'kg' },
   { id: 'zd',     name: 'Маркетолог Зелёная Долина', short: 'Маркет. ЗД', color: '#D97706', company: 'zd' },
   { id: 'pf',     name: 'Собственник ПФ',            short: 'ПФ',         color: '#059669', company: 'pf' },
   { id: 'family', name: 'Семья',                     short: 'Семья',      color: '#DB2777', company: null },
@@ -1106,9 +1106,13 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
         style={{ minHeight: 54, padding: 5, borderRadius: 8,
           border: `1px ${dragOver === key ? 'dashed' : 'solid'} ${dragOver === key ? '#0284C7' : 'rgba(15,23,42,0.08)'}`,
           background: dragOver === key ? 'rgba(2,132,199,0.06)' : (isToday ? 'rgba(2,132,199,0.03)' : '#FFFFFF') }}>
-        {list.map(t => (
-          <RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
-        ))}
+        <div style={{ maxHeight: 322, overflowY: list.length > 5 ? 'auto' : 'visible', paddingRight: list.length > 5 ? 3 : 0 }}>
+          {list.map(t => (
+            <RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
+          ))}
+          {list.length === 0 && <div style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', padding: '10px 0' }}>—</div>}
+        </div>
+        {list.length > 5 && <div style={{ fontSize: 9, color: '#94A3B8', textAlign: 'right', marginTop: 2 }}>{list.length} задач</div>}
         {lane === 'backlog' && (
           addFor === roleId ? (
             <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
