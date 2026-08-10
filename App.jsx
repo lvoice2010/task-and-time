@@ -999,8 +999,9 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const [openTaskId, setOpenTaskId] = useState(null);
   const [showDone, setShowDone] = useState(false);
   const [dragOver, setDragOver] = useState(null); // `${roleId}:${lane}`
-  const [addFor, setAddFor] = useState(null); // roleId with open add-input
-  const [addText, setAddText] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newRole, setNewRole] = useState(ROLES[0].id);
 
   const activePlan = plans ? plans.find(p => p.id === activePlanId) : null;
   const planWeek = (() => {
@@ -1071,16 +1072,16 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
 
   const updateTask = (id, patch) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
 
-  const submitAdd = (roleId) => {
-    const title = addText.trim();
-    if (!title) { setAddFor(null); setAddText(''); return; }
-    const role = getRole(roleId);
+  const submitAdd = () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    const role = getRole(newRole);
     setTasks(prev => [...prev, {
-      id: newId(), title, column: 'backlog', role: roleId, company: role ? (role.company || 'personal') : null,
+      id: newId(), title, column: 'backlog', role: newRole, company: role ? (role.company || 'personal') : null,
       dept: null, quadrant: null, rock: false, sessions: [], createdAt: Date.now(),
       description: '', estimateMinutes: null, completedAt: null, result: '', descriptionFiles: [], resultFiles: [],
     }]);
-    setAddText('');
+    setNewTitle('');
   };
 
   const lanes = showDone ? [...ROLE_LANES, { id: 'done', title: 'Сделано', icon: '✓' }] : ROLE_LANES;
@@ -1113,19 +1114,6 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
           {list.length === 0 && <div style={{ fontSize: 10, color: '#CBD5E1', textAlign: 'center', padding: '10px 0' }}>—</div>}
         </div>
         {list.length > 4 && <div style={{ fontSize: 9, color: '#94A3B8', textAlign: 'right', marginTop: 2 }}>{list.length} задач</div>}
-        {lane === 'backlog' && (
-          addFor === roleId ? (
-            <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
-              <input autoFocus value={addText} onChange={e => setAddText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') submitAdd(roleId); if (e.key === 'Escape') { setAddFor(null); setAddText(''); } }}
-                placeholder="Глагол + результат..." style={{ ...S.input, padding: '5px 8px', fontSize: 12 }} />
-              <button onClick={() => submitAdd(roleId)} className="btn-hover" style={{ padding: '4px 8px', fontSize: 12, borderRadius: 5, background: '#0284C7', color: '#fff' }}>+</button>
-            </div>
-          ) : (
-            <button onClick={() => { setAddFor(roleId); setAddText(''); }} className="btn-hover"
-              style={{ width: '100%', padding: '5px', fontSize: 11, color: '#64748B', borderRadius: 5, border: '1px dashed rgba(15,23,42,0.15)' }}>+ задача</button>
-          )
-        )}
       </div>
     );
   };
@@ -1137,10 +1125,28 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
           Сегодня: <b style={{ color: todayCount > MAX_TODAY ? '#DC2626' : '#0F172A' }}>{todayCount}</b> / {MAX_TODAY}
           {!todayHasQ2 && todayCount > 0 && <span style={{ color: '#CA8A04', marginLeft: 8 }}>⚠ нет дела из Q2 (важное/несрочное)</span>}
         </div>
-        <button onClick={() => setShowDone(v => !v)} className="btn-hover" style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 12, borderRadius: 6, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
+        <button onClick={() => { setShowAdd(v => !v); setNewTitle(''); }} className="btn-hover" style={{ marginLeft: 'auto', padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, color: '#FFFFFF', background: '#0284C7' }}>
+          + задача
+        </button>
+        <button onClick={() => setShowDone(v => !v)} className="btn-hover" style={{ padding: '6px 12px', fontSize: 12, borderRadius: 6, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
           {showDone ? 'Скрыть сделанное' : 'Показать сделанное'}
         </button>
       </div>
+
+      {showAdd && (
+        <div style={{ ...S.card, marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input autoFocus value={newTitle} onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submitAdd(); if (e.key === 'Escape') setShowAdd(false); }}
+            placeholder="Глагол + результат — напр. «Записать выпуск про X»" style={{ ...S.input, flex: 1, minWidth: 220 }} />
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {ROLES.map(r => (
+              <button key={r.id} onClick={() => setNewRole(r.id)} style={S.chip(newRole === r.id, r.color)}>{r.short}</button>
+            ))}
+          </div>
+          <button onClick={submitAdd} className="btn-hover" style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, background: '#0284C7', color: '#FFFFFF' }}>Добавить</button>
+          <button onClick={() => setShowAdd(false)} className="btn-hover" style={{ padding: '7px 12px', fontSize: 12, borderRadius: 6, color: '#64748B', border: '1px solid rgba(15,23,42,0.12)' }}>Готово</button>
+        </div>
+      )}
 
       <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, minWidth: 720, alignItems: 'stretch' }}>
