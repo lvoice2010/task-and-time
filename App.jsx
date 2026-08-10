@@ -1006,6 +1006,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newRole, setNewRole] = useState(ROLES[0].id);
+  const [newQuadrant, setNewQuadrant] = useState(null);
 
   const activePlan = plans ? plans.find(p => p.id === activePlanId) : null;
   const planWeek = (() => {
@@ -1100,7 +1101,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
     const role = getRole(newRole);
     setTasks(prev => [...prev, {
       id: newId(), title, column: 'backlog', role: newRole, company: role ? (role.company || 'personal') : null,
-      dept: null, quadrant: null, rock: false, sessions: [], createdAt: Date.now(),
+      dept: null, quadrant: newQuadrant, rock: false, sessions: [], createdAt: Date.now(),
       description: '', estimateMinutes: null, completedAt: null, result: '', descriptionFiles: [], resultFiles: [],
     }]);
     setNewTitle('');
@@ -1187,6 +1188,11 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {ROLES.map(r => (
               <button key={r.id} onClick={() => setNewRole(r.id)} style={S.chip(newRole === r.id, r.color)}>{r.short}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {QUADRANTS.map(q => (
+              <button key={q.id} onClick={() => setNewQuadrant(newQuadrant === q.id ? null : q.id)} style={S.chip(newQuadrant === q.id, q.color)} title={q.label}>{q.code}</button>
             ))}
           </div>
           <button onClick={submitAdd} className="btn-hover" style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, background: '#0284C7', color: '#FFFFFF' }}>Добавить</button>
