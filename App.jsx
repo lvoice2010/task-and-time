@@ -42,6 +42,45 @@ const getDept = (id) => DEPTS.find(d => d.id === id);
 const getCompany = (id) => COMPANIES.find(c => c.id === id);
 const getColumn = (id) => COLUMNS.find(c => c.id === id);
 
+// ===== Роли (Кови) и квадранты (Эйзенхауэр) =====
+const ROLES = [
+  { id: 'kg',     name: 'Рук-ль КиберГусли',         short: 'КиберГусли', color: '#2563EB', company: 'kg' },
+  { id: 'kc',     name: 'Рук-ль КЦ',                 short: 'КЦ',         color: '#DC2626', company: 'kc' },
+  { id: 'zd',     name: 'Маркетолог Зелёная Долина', short: 'Маркет. ЗД', color: '#D97706', company: 'zd' },
+  { id: 'pf',     name: 'Собственник ПФ',            short: 'ПФ',         color: '#059669', company: 'pf' },
+  { id: 'family', name: 'Семья',                     short: 'Семья',      color: '#DB2777', company: null },
+  { id: 'self',   name: 'Забота о себе',             short: 'Забота',     color: '#0D9488', company: null },
+];
+const getRole = (id) => ROLES.find(r => r.id === id);
+const roleByCompany = (companyId) => ROLES.find(r => r.company === companyId);
+
+const QUADRANTS = [
+  { id: 1, code: 'Q1', label: 'Срочно / Важно',       color: '#DC2626' },
+  { id: 2, code: 'Q2', label: 'Важно / Не срочно',    color: '#2563EB' },
+  { id: 3, code: 'Q3', label: 'Срочно / Не важно',    color: '#D97706' },
+  { id: 4, code: 'Q4', label: 'Не срочно / Не важно', color: '#64748B' },
+];
+const getQuadrant = (id) => QUADRANTS.find(q => q.id === id);
+
+// Дорожки роль-доски. column переиспользуем как lane: backlog|week|today|done.
+const ROLE_LANES = [
+  { id: 'today',   title: 'Сегодня',    icon: '☀' },
+  { id: 'week',    title: 'Неделя',     icon: '📅' },
+  { id: 'backlog', title: 'Все задачи', icon: '☰' },
+];
+const COLUMN_TO_QUADRANT = { urgent: 1, important: 2, delegate: 3, later: 4 };
+// Значения на лету для старых задач (без явных полей); при взаимодействии сохраняются.
+const effRole = (t) => t.role || (roleByCompany(t.company) || {}).id || null; // null = личное, нужно разобрать
+const effQuadrant = (t) => t.quadrant || COLUMN_TO_QUADRANT[t.column] || null;
+const effLane = (t) => {
+  const c = t.column;
+  if (c === 'done') return 'done';
+  if (c === 'today' || c === 'week' || c === 'backlog') return c;
+  return 'backlog'; // urgent/important/delegate/later и прочее — в общий пул
+};
+const goalRole = (g) => g.role || (roleByCompany(g.company) || {}).id || null;
+const MAX_TODAY = 3;
+
 // ===== Утилиты =====
 const newId = () => Math.random().toString(36).slice(2, 11);
 
@@ -302,6 +341,9 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
   const [resultFiles, setResultFiles] = useState(task.resultFiles || []);
   const [dept, setDept] = useState(task.dept);
   const [company, setCompany] = useState(task.company);
+  const [role, setRole] = useState(effRole(task));
+  const [quadrant, setQuadrant] = useState(effQuadrant(task));
+  const [rock, setRock] = useState(!!task.rock);
   const [editingTime, setEditingTime] = useState(false);
   const totalMins = Math.floor(taskTotal(task, now) / 60000);
   const [editH, setEditH] = useState(String(Math.floor(totalMins / 60)));
@@ -318,6 +360,9 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
     setResultFiles(task.resultFiles || []);
     setDept(task.dept);
     setCompany(task.company);
+    setRole(effRole(task));
+    setQuadrant(effQuadrant(task));
+    setRock(!!task.rock);
   }, [task.id]);
 
   const startedAt = task.sessions.length > 0 ? Math.min(...task.sessions.map(s => s.start)) : null;
@@ -336,6 +381,9 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
       resultFiles,
       dept,
       company,
+      role,
+      quadrant,
+      rock,
     };
     onUpdate(patch);
     onClose();
@@ -392,6 +440,30 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
                 <button key={c.id} onClick={() => setCompany(company === c.id ? null : c.id)} style={S.chip(company === c.id, c.color)}>{c.name}</button>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* role + quadrant + rock */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+          <div>
+            {label('Роль')}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {ROLES.map(r => (
+                <button key={r.id} onClick={() => setRole(role === r.id ? null : r.id)} style={S.chip(role === r.id, r.color)}>{r.short}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            {label('Квадрант')}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {QUADRANTS.map(q => (
+                <button key={q.id} onClick={() => setQuadrant(quadrant === q.id ? null : q.id)} style={S.chip(quadrant === q.id, q.color)} title={q.label}>{q.code}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            {label('Большой камень')}
+            <button onClick={() => setRock(!rock)} style={S.chip(rock, '#CA8A04')}>★ {rock ? 'да' : 'нет'}</button>
           </div>
         </div>
 
@@ -881,6 +953,253 @@ function KanbanColumn({ column, tasks, allTasks, onDrop, onTaskAction, now, onDr
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ===== Роль-доска (Дела по ролям) =====
+function RoleCard({ task, now, onOpen, onDragStart, onAction }) {
+  const status = taskStatus(task);
+  const total = taskTotal(task, now);
+  const q = getQuadrant(effQuadrant(task));
+  const isRock = !!task.rock;
+  const isDone = effLane(task) === 'done';
+  return (
+    <div draggable onDragStart={(e) => onDragStart(e, task.id)} className="card-hover"
+      style={{ ...S.card, padding: '7px 9px', marginBottom: 6, cursor: 'grab',
+        borderLeft: `3px solid ${q ? q.color : 'rgba(15,23,42,0.15)'}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <button onClick={() => onAction('rock', task.id)} title="Большой камень недели"
+          style={{ fontSize: 13, lineHeight: 1, color: isRock ? '#CA8A04' : '#CBD5E1', padding: 0 }}>★</button>
+        <div onClick={() => onOpen(task.id)} style={{ flex: 1, fontSize: 12.5, fontWeight: 500, lineHeight: 1.3,
+          color: '#0F172A', wordBreak: 'break-word', cursor: 'pointer',
+          textDecoration: isDone ? 'line-through' : 'none', opacity: isDone ? 0.6 : 1 }}>
+          {task.title}
+        </div>
+        <button onClick={() => onAction('cycleQuadrant', task.id)} title="Квадрант"
+          className="mono" style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, flexShrink: 0,
+            color: q ? q.color : '#94A3B8', background: q ? `${q.color}1A` : 'rgba(15,23,42,0.05)' }}>
+          {q ? q.code : '—'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+        {status === 'running'
+          ? <button onClick={() => onAction('pause', task.id)} className="btn-hover" style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#FEF3C7', color: '#D97706' }}>⏸</button>
+          : <button onClick={() => onAction('start', task.id)} className="btn-hover" style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#D1FAE5', color: '#059669' }}>▶</button>}
+        <span className="mono" style={{ fontSize: 10, color: status === 'running' ? '#059669' : '#94A3B8' }}>{fmtDuration(total)}</span>
+        {!isDone && <button onClick={() => onAction('complete', task.id)} title="Выполнено" className="btn-hover"
+          style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#DBEAFE', color: '#0284C7' }}>✓</button>}
+      </div>
+    </div>
+  );
+}
+
+function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
+  const draggedId = useRef(null);
+  const [openTaskId, setOpenTaskId] = useState(null);
+  const [showDone, setShowDone] = useState(false);
+  const [dragOver, setDragOver] = useState(null); // `${roleId}:${lane}`
+  const [addFor, setAddFor] = useState(null); // roleId with open add-input
+  const [addText, setAddText] = useState('');
+
+  const activePlan = plans ? plans.find(p => p.id === activePlanId) : null;
+  const planWeek = (() => {
+    if (!activePlan || !activePlan.startDate) return null;
+    const daysPassed = Math.max(0, Math.min(TOTAL_DAYS, Math.floor((parseISODate(todayISO()) - parseISODate(activePlan.startDate)) / 86400000) + 1));
+    const w = Math.min(TOTAL_WEEKS, Math.max(1, Math.ceil(daysPassed / 7)));
+    return Number.isFinite(w) ? w : null;
+  })();
+  const goalFor = (roleId) => activePlan ? (activePlan.goals || []).find(g => goalRole(g) === roleId) : null;
+
+  const onDragStart = (e, id) => { draggedId.current = id; e.dataTransfer.effectAllowed = 'move'; };
+
+  const todayCount = tasks.filter(t => effLane(t) === 'today').length;
+  const todayHasQ2 = tasks.some(t => effLane(t) === 'today' && effQuadrant(t) === 2);
+
+  const moveTo = (id, roleId, lane) => {
+    if (lane === 'today') {
+      const t = tasks.find(x => x.id === id);
+      if (t && effLane(t) !== 'today' && todayCount >= MAX_TODAY) {
+        if (!window.confirm(`На сегодня уже ${MAX_TODAY} дела. По методу — не больше трёх. Всё равно добавить?`)) return;
+      }
+    }
+    const role = getRole(roleId);
+    const nowTs = Date.now();
+    setTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const patch = { ...t, role: roleId, company: role ? (role.company || 'personal') : t.company, quadrant: t.quadrant || effQuadrant(t) || null, column: lane };
+      if (lane === 'done') {
+        patch.sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
+        patch.completedAt = t.completedAt || nowTs;
+      } else if (t.column === 'done') {
+        patch.completedAt = null;
+      }
+      return patch;
+    }));
+  };
+
+  const onDrop = (roleId, lane) => {
+    const id = draggedId.current;
+    draggedId.current = null;
+    setDragOver(null);
+    if (id) moveTo(id, roleId, lane);
+  };
+
+  const action = (type, id, payload) => {
+    const nowTs = Date.now();
+    if (type === 'start') {
+      setTasks(prev => prev.map(t => t.id === id
+        ? { ...t, sessions: [...t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s), { start: nowTs, end: null }] } : t));
+    } else if (type === 'pause') {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, sessions: t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s) } : t));
+    } else if (type === 'complete') {
+      setTasks(prev => prev.map(t => t.id === id
+        ? { ...t, sessions: t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s), column: 'done', completedAt: nowTs } : t));
+    } else if (type === 'rock') {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, rock: !t.rock } : t));
+    } else if (type === 'cycleQuadrant') {
+      setTasks(prev => prev.map(t => {
+        if (t.id !== id) return t;
+        const cur = effQuadrant(t);
+        const next = cur == null ? 1 : (cur >= 4 ? null : cur + 1);
+        return { ...t, quadrant: next };
+      }));
+    } else if (type === 'delete') {
+      setTasks(prev => prev.filter(t => t.id !== id));
+    }
+  };
+
+  const updateTask = (id, patch) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+
+  const submitAdd = (roleId) => {
+    const title = addText.trim();
+    if (!title) { setAddFor(null); setAddText(''); return; }
+    const role = getRole(roleId);
+    setTasks(prev => [...prev, {
+      id: newId(), title, column: 'backlog', role: roleId, company: role ? (role.company || 'personal') : null,
+      dept: null, quadrant: null, rock: false, sessions: [], createdAt: Date.now(),
+      description: '', estimateMinutes: null, completedAt: null, result: '', descriptionFiles: [], resultFiles: [],
+    }]);
+    setAddText('');
+  };
+
+  const lanes = showDone ? [...ROLE_LANES, { id: 'done', title: 'Сделано', icon: '✓' }] : ROLE_LANES;
+  const gridCols = `150px ${lanes.map(() => '1fr').join(' ')}`;
+
+  const roleTasks = (roleId, lane) => {
+    const list = tasks.filter(t => effRole(t) === roleId && effLane(t) === lane);
+    if (lane === 'done') return list.sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+    return list.sort((a, b) => (b.rock ? 1 : 0) - (a.rock ? 1 : 0)); // камни сверху
+  };
+
+  const unsorted = tasks.filter(t => effRole(t) == null && effLane(t) !== 'done');
+
+  const laneCell = (roleId, lane) => {
+    const key = `${roleId}:${lane}`;
+    const list = roleTasks(roleId, lane);
+    const isToday = lane === 'today';
+    return (
+      <div key={key}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(key); }}
+        onDragLeave={() => setDragOver(d => d === key ? null : d)}
+        onDrop={() => onDrop(roleId, lane)}
+        style={{ minHeight: 54, padding: 5, borderRadius: 8,
+          border: `1px ${dragOver === key ? 'dashed' : 'solid'} ${dragOver === key ? '#0284C7' : 'rgba(15,23,42,0.08)'}`,
+          background: dragOver === key ? 'rgba(2,132,199,0.06)' : (isToday ? 'rgba(2,132,199,0.03)' : '#FFFFFF') }}>
+        {list.map(t => (
+          <RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
+        ))}
+        {lane === 'backlog' && (
+          addFor === roleId ? (
+            <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+              <input autoFocus value={addText} onChange={e => setAddText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitAdd(roleId); if (e.key === 'Escape') { setAddFor(null); setAddText(''); } }}
+                placeholder="Глагол + результат..." style={{ ...S.input, padding: '5px 8px', fontSize: 12 }} />
+              <button onClick={() => submitAdd(roleId)} className="btn-hover" style={{ padding: '4px 8px', fontSize: 12, borderRadius: 5, background: '#0284C7', color: '#fff' }}>+</button>
+            </div>
+          ) : (
+            <button onClick={() => { setAddFor(roleId); setAddText(''); }} className="btn-hover"
+              style={{ width: '100%', padding: '5px', fontSize: 11, color: '#64748B', borderRadius: 5, border: '1px dashed rgba(15,23,42,0.15)' }}>+ задача</button>
+          )
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, color: '#475569' }}>
+          Сегодня: <b style={{ color: todayCount > MAX_TODAY ? '#DC2626' : '#0F172A' }}>{todayCount}</b> / {MAX_TODAY}
+          {!todayHasQ2 && todayCount > 0 && <span style={{ color: '#CA8A04', marginLeft: 8 }}>⚠ нет дела из Q2 (важное/несрочное)</span>}
+        </div>
+        <button onClick={() => setShowDone(v => !v)} className="btn-hover" style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 12, borderRadius: 6, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
+          {showDone ? 'Скрыть сделанное' : 'Показать сделанное'}
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, minWidth: 720, alignItems: 'stretch' }}>
+          <div />
+          {lanes.map(l => (
+            <div key={l.id} style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, padding: '4px', borderRadius: 6,
+              color: l.id === 'today' ? '#0284C7' : '#64748B', background: l.id === 'today' ? '#DBEAFE' : 'transparent' }}>
+              {l.icon} {l.title}
+            </div>
+          ))}
+          {ROLES.map(role => {
+            const goal = goalFor(role.id);
+            const pct = goal ? computeProgress(goal.startValue, goal.targetValue, goal.currentValue) : null;
+            return (
+              <React.Fragment key={role.id}>
+                <div style={{ borderRadius: 8, padding: 8, background: `${role.color}12`, alignSelf: 'stretch' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: role.color }}>{role.short}</div>
+                  {goal ? (
+                    <div style={{ marginTop: 5 }}>
+                      <div style={{ fontSize: 10, color: '#475569', lineHeight: 1.25, wordBreak: 'break-word' }}>🎯 {goal.title || 'Без названия'}</div>
+                      <div style={{ height: 4, background: 'rgba(15,23,42,0.1)', borderRadius: 2, marginTop: 4 }}>
+                        <div style={{ width: `${pct == null ? 0 : pct}%`, height: '100%', background: role.color, borderRadius: 2 }} />
+                      </div>
+                      <div className="mono" style={{ fontSize: 9, color: '#64748B', marginTop: 2 }}>
+                        {pct == null ? '—' : `${Math.round(pct)}%`}{planWeek ? ` · нед. ${planWeek}/${TOTAL_WEEKS}` : ''}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 5 }}>цель не задана</div>
+                  )}
+                </div>
+                {lanes.map(l => laneCell(role.id, l.id))}
+              </React.Fragment>
+            );
+          })}
+          {unsorted.length > 0 && (
+            <React.Fragment>
+              <div style={{ borderRadius: 8, padding: 8, background: 'rgba(219,39,119,0.1)', border: '1px dashed #DB2777' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#DB2777' }}>Личное — разобрать</div>
+                <div style={{ fontSize: 10, color: '#993556', marginTop: 4 }}>перетащи в «Семья» или «Забота о себе»</div>
+              </div>
+              <div style={{ gridColumn: `2 / span ${lanes.length}`, padding: 5, borderRadius: 8, border: '1px solid rgba(15,23,42,0.08)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {unsorted.map(t => (
+                  <div key={t.id} style={{ width: 200 }}>
+                    <RoleCard task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />
+                  </div>
+                ))}
+              </div>
+            </React.Fragment>
+          )}
+        </div>
+      </div>
+
+      {openTaskId && tasks.find(t => t.id === openTaskId) && (
+        <TaskModal
+          task={tasks.find(t => t.id === openTaskId)}
+          now={now}
+          onClose={() => setOpenTaskId(null)}
+          onUpdate={(patch) => updateTask(openTaskId, patch)}
+          onComplete={() => { action('complete', openTaskId); setOpenTaskId(null); }}
+          onDelete={() => action('delete', openTaskId)}
+        />
+      )}
     </div>
   );
 }
@@ -3061,7 +3380,7 @@ function App() {
       <div style={S.header}>
         <div style={S.logo}>План 2026</div>
         <div style={S.tabs}>
-          <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Канбан</button>
+          <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Дела по ролям</button>
           <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
           <button onClick={() => setTab('mindmap')} style={S.tab(tab === 'mindmap')}>Mind Map</button>
           <button onClick={() => setTab('stream')} style={S.tab(tab === 'stream')}>Стримы</button>
@@ -3093,7 +3412,7 @@ function App() {
       </div>
       <div style={S.container}>
         {tab === 'kanban' && (
-          <KanbanView tasks={tasks} setTasks={setTasks} now={now} />
+          <RoleBoardView tasks={tasks} setTasks={setTasks} now={now} plans={plans} activePlanId={activePlanId} />
         )}
         {tab === 'weekplan' && (
           <WeekPlanView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} tasks={tasks} />
