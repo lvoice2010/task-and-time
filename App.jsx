@@ -1225,11 +1225,11 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
         {showBalance && (() => {
           const scaleMax = Math.max(...ROLES.map(r => Math.max(weekRoleTime[r.id] / 3600000, roleTargetHours(r))), 1);
           return (
-            <div style={{ maxWidth: 560 }}>
-              <div style={{ display: 'flex', gap: 8, fontSize: 9, color: '#94A3B8', marginBottom: 4 }}>
-                <span style={{ width: 110, flexShrink: 0 }}>роль</span>
+            <div style={{ maxWidth: 680 }}>
+              <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
+                <span style={{ width: 130, flexShrink: 0 }}>роль</span>
                 <span style={{ flex: 1 }}>факт (▮ = цель)</span>
-                <span style={{ width: 92, textAlign: 'right', flexShrink: 0 }}>факт / цель</span>
+                <span style={{ width: 120, textAlign: 'right', flexShrink: 0 }}>факт / цель</span>
               </div>
               {[...ROLES].sort((a, b) => b.target - a.target).map(r => {
                 const h = weekRoleTime[r.id] / 3600000;
@@ -1237,17 +1237,17 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
                 const reached = h >= th;
                 const color = th > 0 ? (reached ? '#059669' : (h / th >= 0.5 ? '#CA8A04' : '#DC2626')) : '#475569';
                 return (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: r.color, width: 110, flexShrink: 0 }}>{r.short}</span>
-                    <div style={{ flex: 1, height: 8, background: '#E2E8F0', borderRadius: 4, position: 'relative' }}>
-                      <div style={{ width: `${(h / scaleMax * 100)}%`, height: '100%', background: r.color, borderRadius: 4 }} />
-                      <div title={`цель ${th}ч`} style={{ position: 'absolute', top: -2, bottom: -2, left: `${(th / scaleMax * 100)}%`, width: 2, background: '#0F172A', borderRadius: 1 }} />
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: r.color, width: 130, flexShrink: 0 }}>{r.short}</span>
+                    <div style={{ flex: 1, height: 22, background: '#E2E8F0', borderRadius: 6, position: 'relative', overflow: 'visible' }}>
+                      <div style={{ width: `${(h / scaleMax * 100)}%`, height: '100%', background: r.color, borderRadius: 6, minWidth: h > 0 ? 4 : 0 }} />
+                      <div title={`цель ${th}ч`} style={{ position: 'absolute', top: -3, bottom: -3, left: `${(th / scaleMax * 100)}%`, width: 3, background: '#0F172A', borderRadius: 2 }} />
                     </div>
-                    <span className="mono" style={{ fontSize: 11, fontWeight: 600, color, width: 92, textAlign: 'right', flexShrink: 0 }}>{h.toFixed(1)} / {th}ч{reached ? ' ✓' : (h === 0 ? ' ⚠' : '')}</span>
+                    <span className="mono" style={{ fontSize: 14, fontWeight: 600, color, width: 120, textAlign: 'right', flexShrink: 0 }}>{h.toFixed(1)} / {th}ч{reached ? ' ✓' : (h === 0 ? ' ⚠' : '')}</span>
                   </div>
                 );
               })}
-              <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 4 }}>цель — доля от {WEEK_HOURS}ч/нед · КЦ 50% · КГ 30% · остальные по 5%</div>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>цель — доля от {WEEK_HOURS}ч/нед · КЦ 50% · КГ 30% · остальные по 5%</div>
             </div>
           );
         })()}
