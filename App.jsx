@@ -48,7 +48,7 @@ const ROLES = [
   { id: 'kg',     name: 'Рук-ль КиберГусли',         short: 'КиберГусли', color: '#2563EB', company: 'kg' },
   { id: 'zd',     name: 'Маркетолог Зелёная Долина', short: 'Маркет. ЗД', color: '#D97706', company: 'zd' },
   { id: 'pf',     name: 'Собственник ПФ',            short: 'ПФ',         color: '#059669', company: 'pf' },
-  { id: 'family', name: 'Семья',                     short: 'Семья',      color: '#DB2777', company: null },
+  { id: 'family', name: 'Семья',                     short: 'Семья',      color: '#7C3AED', company: null },
   { id: 'self',   name: 'Забота о себе',             short: 'Забота',     color: '#0D9488', company: null },
 ];
 const getRole = (id) => ROLES.find(r => r.id === id);
