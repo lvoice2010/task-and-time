@@ -1002,6 +1002,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const draggedId = useRef(null);
   const [openTaskId, setOpenTaskId] = useState(null);
   const [showDone, setShowDone] = useState(false);
+  const [showBalance, setShowBalance] = useState(true);
   const [dragOver, setDragOver] = useState(null); // `${roleId}:${lane}`
   const [addCol, setAddCol] = useState(null); // colKey с открытой формой добавления
   const [newTitle, setNewTitle] = useState('');
@@ -1214,20 +1215,27 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
         </button>
       </div>
 
-      <div style={{ ...S.card, marginBottom: 12, padding: '8px 12px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>⚖ Баланс недели</span>
-        {ROLES.map(r => {
-          const ms = weekRoleTime[r.id]; const h = ms / 3600000;
-          return (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 150, flex: '1 1 150px' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 66 }}>{r.short}</span>
-              <div style={{ flex: 1, minWidth: 30, height: 6, background: '#E2E8F0', borderRadius: 3 }}>
-                <div style={{ width: `${maxWeekRole > 0 ? (ms / maxWeekRole * 100) : 0}%`, height: '100%', background: r.color, borderRadius: 3 }} />
-              </div>
-              <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: h > 0 ? '#475569' : '#DC2626', minWidth: 40, textAlign: 'right' }}>{h.toFixed(1)}ч{h === 0 ? ' ⚠' : ''}</span>
-            </div>
-          );
-        })}
+      <div style={{ ...S.card, marginBottom: 12, padding: '10px 14px' }}>
+        <div onClick={() => setShowBalance(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: showBalance ? 10 : 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>⚖ Баланс недели</span>
+          <span style={{ fontSize: 11, color: '#94A3B8' }}>{showBalance ? '▾' : '▸ показать'}</span>
+        </div>
+        {showBalance && (
+          <div style={{ maxWidth: 520 }}>
+            {[...ROLES].sort((a, b) => weekRoleTime[b.id] - weekRoleTime[a.id]).map(r => {
+              const ms = weekRoleTime[r.id]; const h = ms / 3600000;
+              return (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: r.color, width: 110, flexShrink: 0 }}>{r.short}</span>
+                  <div style={{ flex: 1, height: 8, background: '#E2E8F0', borderRadius: 4 }}>
+                    <div style={{ width: `${maxWeekRole > 0 ? (ms / maxWeekRole * 100) : 0}%`, height: '100%', background: r.color, borderRadius: 4 }} />
+                  </div>
+                  <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: h > 0 ? '#475569' : '#DC2626', width: 46, textAlign: 'right', flexShrink: 0 }}>{h.toFixed(1)}ч{h === 0 ? ' ⚠' : ''}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
