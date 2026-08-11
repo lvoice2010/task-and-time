@@ -1022,6 +1022,19 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const todayCount = tasks.filter(t => effLane(t) === 'today').length;
   const todayHasQ2 = tasks.some(t => effLane(t) === 'today' && effQuadrant(t) === 2);
 
+  // баланс времени по ролям за текущую неделю (пн–вс)
+  const weekRange = (() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    const dow = d.getDay(); const diff = dow === 0 ? -6 : 1 - dow;
+    d.setDate(d.getDate() + diff);
+    const from = d.getTime();
+    const end = new Date(d); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999);
+    return { from, to: end.getTime() };
+  })();
+  const weekRoleTime = {}; ROLES.forEach(r => { weekRoleTime[r.id] = 0; });
+  tasks.forEach(t => { const ms = taskTotalInRange(t, weekRange.from, weekRange.to); if (ms > 0) { const rid = effRole(t); if (rid && weekRoleTime[rid] != null) weekRoleTime[rid] += ms; } });
+  const maxWeekRole = Math.max(...ROLES.map(r => weekRoleTime[r.id]), 1);
+
   const moveToLane = (id, lane) => {
     if (lane === 'today') {
       const t = tasks.find(x => x.id === id);
@@ -1199,6 +1212,22 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
         <button onClick={() => setShowDone(v => !v)} className="btn-hover" style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 12, borderRadius: 6, color: '#475569', border: '1px solid rgba(15,23,42,0.12)', background: '#FFFFFF' }}>
           {showDone ? 'Скрыть сделанное' : 'Показать сделанное'}
         </button>
+      </div>
+
+      <div style={{ ...S.card, marginBottom: 12, padding: '8px 12px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>⚖ Баланс недели</span>
+        {ROLES.map(r => {
+          const ms = weekRoleTime[r.id]; const h = ms / 3600000;
+          return (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 150, flex: '1 1 150px' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 66 }}>{r.short}</span>
+              <div style={{ flex: 1, minWidth: 30, height: 6, background: '#E2E8F0', borderRadius: 3 }}>
+                <div style={{ width: `${maxWeekRole > 0 ? (ms / maxWeekRole * 100) : 0}%`, height: '100%', background: r.color, borderRadius: 3 }} />
+              </div>
+              <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: h > 0 ? '#475569' : '#DC2626', minWidth: 40, textAlign: 'right' }}>{h.toFixed(1)}ч{h === 0 ? ' ⚠' : ''}</span>
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
