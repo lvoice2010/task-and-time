@@ -44,12 +44,12 @@ const getColumn = (id) => COLUMNS.find(c => c.id === id);
 
 // ===== Роли (Кови) и квадранты (Эйзенхауэр) =====
 const ROLES = [
-  { id: 'kc',     name: 'Рук-ль КЦ',                 short: 'КЦ',         color: '#DC2626', company: 'kc' },
-  { id: 'kg',     name: 'Рук-ль КиберГусли',         short: 'КиберГусли', color: '#2563EB', company: 'kg' },
-  { id: 'zd',     name: 'Маркетолог Зелёная Долина', short: 'Маркет. ЗД', color: '#D97706', company: 'zd' },
-  { id: 'pf',     name: 'Собственник ПФ',            short: 'ПФ',         color: '#059669', company: 'pf' },
-  { id: 'family', name: 'Семья',                     short: 'Семья',      color: '#7C3AED', company: null },
-  { id: 'self',   name: 'Забота о себе',             short: 'Забота',     color: '#0D9488', company: null },
+  { id: 'kc',     name: 'Рук-ль КЦ',                 short: 'КЦ',         color: '#DC2626', company: 'kc',  target: 50 },
+  { id: 'kg',     name: 'Рук-ль КиберГусли',         short: 'КиберГусли', color: '#2563EB', company: 'kg',  target: 30 },
+  { id: 'zd',     name: 'Маркетолог Зелёная Долина', short: 'Маркет. ЗД', color: '#D97706', company: 'zd',  target: 5 },
+  { id: 'pf',     name: 'Собственник ПФ',            short: 'ПФ',         color: '#059669', company: 'pf',  target: 5 },
+  { id: 'family', name: 'Семья',                     short: 'Семья',      color: '#7C3AED', company: null, target: 5 },
+  { id: 'self',   name: 'Забота о себе',             short: 'Забота',     color: '#0D9488', company: null, target: 5 },
 ];
 const getRole = (id) => ROLES.find(r => r.id === id);
 const roleByCompany = (companyId) => ROLES.find(r => r.company === companyId);
@@ -80,6 +80,8 @@ const effLane = (t) => {
 };
 const goalRole = (g) => g.role || (roleByCompany(g.company) || {}).id || null;
 const MAX_TODAY = 3;
+const WEEK_HOURS = 40; // рабочих часов в неделе — база для целевых долей ролей
+const roleTargetHours = (r) => (r.target || 0) / 100 * WEEK_HOURS;
 
 // ===== Утилиты =====
 const newId = () => Math.random().toString(36).slice(2, 11);
@@ -1220,22 +1222,35 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
           <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>⚖ Баланс недели</span>
           <span style={{ fontSize: 11, color: '#94A3B8' }}>{showBalance ? '▾' : '▸ показать'}</span>
         </div>
-        {showBalance && (
-          <div style={{ maxWidth: 520 }}>
-            {[...ROLES].sort((a, b) => weekRoleTime[b.id] - weekRoleTime[a.id]).map(r => {
-              const ms = weekRoleTime[r.id]; const h = ms / 3600000;
-              return (
-                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: r.color, width: 110, flexShrink: 0 }}>{r.short}</span>
-                  <div style={{ flex: 1, height: 8, background: '#E2E8F0', borderRadius: 4 }}>
-                    <div style={{ width: `${maxWeekRole > 0 ? (ms / maxWeekRole * 100) : 0}%`, height: '100%', background: r.color, borderRadius: 4 }} />
+        {showBalance && (() => {
+          const scaleMax = Math.max(...ROLES.map(r => Math.max(weekRoleTime[r.id] / 3600000, roleTargetHours(r))), 1);
+          return (
+            <div style={{ maxWidth: 560 }}>
+              <div style={{ display: 'flex', gap: 8, fontSize: 9, color: '#94A3B8', marginBottom: 4 }}>
+                <span style={{ width: 110, flexShrink: 0 }}>роль</span>
+                <span style={{ flex: 1 }}>факт (▮ = цель)</span>
+                <span style={{ width: 92, textAlign: 'right', flexShrink: 0 }}>факт / цель</span>
+              </div>
+              {[...ROLES].sort((a, b) => b.target - a.target).map(r => {
+                const h = weekRoleTime[r.id] / 3600000;
+                const th = roleTargetHours(r);
+                const reached = h >= th;
+                const color = th > 0 ? (reached ? '#059669' : (h / th >= 0.5 ? '#CA8A04' : '#DC2626')) : '#475569';
+                return (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: r.color, width: 110, flexShrink: 0 }}>{r.short}</span>
+                    <div style={{ flex: 1, height: 8, background: '#E2E8F0', borderRadius: 4, position: 'relative' }}>
+                      <div style={{ width: `${(h / scaleMax * 100)}%`, height: '100%', background: r.color, borderRadius: 4 }} />
+                      <div title={`цель ${th}ч`} style={{ position: 'absolute', top: -2, bottom: -2, left: `${(th / scaleMax * 100)}%`, width: 2, background: '#0F172A', borderRadius: 1 }} />
+                    </div>
+                    <span className="mono" style={{ fontSize: 11, fontWeight: 600, color, width: 92, textAlign: 'right', flexShrink: 0 }}>{h.toFixed(1)} / {th}ч{reached ? ' ✓' : (h === 0 ? ' ⚠' : '')}</span>
                   </div>
-                  <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: h > 0 ? '#475569' : '#DC2626', width: 46, textAlign: 'right', flexShrink: 0 }}>{h.toFixed(1)}ч{h === 0 ? ' ⚠' : ''}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+              <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 4 }}>цель — доля от {WEEK_HOURS}ч/нед · КЦ 50% · КГ 30% · остальные по 5%</div>
+            </div>
+          );
+        })()}
       </div>
 
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
