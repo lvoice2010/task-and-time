@@ -2762,6 +2762,125 @@ function LoginScreen() {
   );
 }
 
+// ===== Отчёты (по ролям и квадрантам) =====
+function RepBar({ label, sub, value, max, color }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#334155' }}>
+        <span>{label}</span>
+        <span className="mono" style={{ color, fontWeight: 600 }}>{sub}</span>
+      </div>
+      <div style={{ height: 8, background: '#E2E8F0', borderRadius: 4, marginTop: 3 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.3s' }} />
+      </div>
+    </div>
+  );
+}
+
+function ReportsView({ tasks }) {
+  const [period, setPeriod] = useState('week');
+  const weekRange = (offset) => {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    const dow = d.getDay(); const diff = dow === 0 ? -6 : 1 - dow;
+    d.setDate(d.getDate() + diff + offset * 7);
+    const from = d.getTime();
+    const end = new Date(d); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999);
+    return { from, to: end.getTime() };
+  };
+  const now = Date.now();
+  const range = period === 'week' ? weekRange(0)
+    : period === 'prev' ? weekRange(-1)
+    : period === 'month' ? { from: now - 30 * 86400000, to: now }
+    : { from: 0, to: now };
+  const { from, to } = range;
+
+  const roleTime = {}; ROLES.forEach(r => { roleTime[r.id] = 0; }); let noneTime = 0;
+  const quadTime = { 1: 0, 2: 0, 3: 0, 4: 0, 0: 0 };
+  tasks.forEach(t => {
+    const ms = taskTotalInRange(t, from, to);
+    if (ms <= 0) return;
+    const rid = effRole(t);
+    if (rid && roleTime[rid] != null) roleTime[rid] += ms; else noneTime += ms;
+    quadTime[effQuadrant(t) || 0] += ms;
+  });
+  const totalTime = ROLES.reduce((s, r) => s + roleTime[r.id], 0) + noneTime;
+
+  const doneInRange = tasks.filter(t => t.completedAt && t.completedAt >= from && t.completedAt <= to);
+  const doneByRole = {}; ROLES.forEach(r => { doneByRole[r.id] = 0; });
+  doneInRange.forEach(t => { const rid = effRole(t); if (rid && doneByRole[rid] != null) doneByRole[rid]++; });
+  const plannedByRole = {}; ROLES.forEach(r => { plannedByRole[r.id] = 0; });
+  tasks.forEach(t => { const l = effLane(t); if (l === 'week' || l === 'today') { const rid = effRole(t); if (rid && plannedByRole[rid] != null) plannedByRole[rid]++; } });
+
+  const maxRoleTime = Math.max(...ROLES.map(r => roleTime[r.id]), noneTime, 1);
+  const maxQuadTime = Math.max(quadTime[1], quadTime[2], quadTime[3], quadTime[4], quadTime[0], 1);
+  const q1 = quadTime[1], q2 = quadTime[2];
+  const fireVsImportant = (q1 + q2) > 0 ? Math.round(q2 / (q1 + q2) * 100) : null;
+  const maxPlanned = Math.max(...ROLES.map(r => plannedByRole[r.id]), 1);
+
+  const periods = [
+    { id: 'week', name: 'Эта неделя' },
+    { id: 'prev', name: 'Прошлая неделя' },
+    { id: 'month', name: '30 дней' },
+    { id: 'all', name: 'Всё время' },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        {periods.map(p => (
+          <button key={p.id} onClick={() => setPeriod(p.id)} style={S.chip(period === p.id, '#0284C7')}>{p.name}</button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748B', alignSelf: 'center' }}>
+          Всего: <b style={{ color: '#0F172A' }}>{fmtHours(totalTime)} ч</b> · завершено: <b style={{ color: '#059669' }}>{doneInRange.length}</b>
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+        <div style={S.card}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', marginBottom: 12 }}>Время по ролям</div>
+          {ROLES.map(r => (
+            <RepBar key={r.id} label={r.short} color={r.color} value={roleTime[r.id]} max={maxRoleTime}
+              sub={`${fmtHours(roleTime[r.id])} ч · ${doneByRole[r.id]} гот.`} />
+          ))}
+          {noneTime > 0 && <RepBar label="Без роли" color="#94A3B8" value={noneTime} max={maxRoleTime} sub={`${fmtHours(noneTime)} ч`} />}
+          {ROLES.filter(r => roleTime[r.id] === 0 && plannedByRole[r.id] === 0).length > 0 && (
+            <div style={{ fontSize: 11, color: '#CA8A04', marginTop: 8 }}>
+              ⚠ без внимания: {ROLES.filter(r => roleTime[r.id] === 0 && plannedByRole[r.id] === 0).map(r => r.short).join(', ')}
+            </div>
+          )}
+        </div>
+
+        <div style={S.card}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', marginBottom: 12 }}>Время по квадрантам</div>
+          {QUADRANTS.map(q => (
+            <RepBar key={q.id} label={`${q.code} · ${q.label}`} color={q.color} value={quadTime[q.id]} max={maxQuadTime} sub={`${fmtHours(quadTime[q.id])} ч`} />
+          ))}
+          {quadTime[0] > 0 && <RepBar label="Без квадранта" color="#94A3B8" value={quadTime[0]} max={maxQuadTime} sub={`${fmtHours(quadTime[0])} ч`} />}
+          {fireVsImportant != null && (
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: fireVsImportant >= 50 ? '#D1FAE5' : '#FEF3C7' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: fireVsImportant >= 50 ? '#059669' : '#CA8A04' }}>
+                Важное (Q2) vs пожары (Q1): {fireVsImportant}% на важное
+              </div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
+                {fireVsImportant >= 50 ? 'Хороший баланс — инвестируешь в важное.' : 'Много времени на срочное. Защити квадрант II.'}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ ...S.card, gridColumn: '1 / -1' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', marginBottom: 12 }}>Запланировано на неделю (по ролям)</div>
+          {ROLES.map(r => (
+            <RepBar key={r.id} label={r.short} color={r.color} value={plannedByRole[r.id]} max={maxPlanned} sub={`${plannedByRole[r.id]} задач`} />
+          ))}
+          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>Задачи в колонках «Сегодня» и «Неделя».</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== Синхронизация: слияние по элементам (merge) =====
 
 // Сравнение метки времени сервера без учёта формата (Z vs +00:00)
@@ -3410,6 +3529,7 @@ function App() {
         <div style={S.logo}>План 2026</div>
         <div style={S.tabs}>
           <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Дела по ролям</button>
+          <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
           <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
           <button onClick={() => setTab('mindmap')} style={S.tab(tab === 'mindmap')}>Mind Map</button>
           <button onClick={() => setTab('stream')} style={S.tab(tab === 'stream')}>Стримы</button>
@@ -3442,6 +3562,9 @@ function App() {
       <div style={S.container}>
         {tab === 'kanban' && (
           <RoleBoardView tasks={tasks} setTasks={setTasks} now={now} plans={plans} activePlanId={activePlanId} />
+        )}
+        {tab === 'reports' && (
+          <ReportsView tasks={tasks} />
         )}
         {tab === 'weekplan' && (
           <WeekPlanView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} tasks={tasks} />
