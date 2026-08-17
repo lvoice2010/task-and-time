@@ -83,6 +83,17 @@ const MAX_TODAY = 3;
 const WEEK_HOURS = 40; // рабочих часов в неделе — база для целевых долей ролей
 const roleTargetHours = (r) => (r.target || 0) / 100 * WEEK_HOURS;
 
+// ===== Проекты (конечные разработки под руководством) =====
+const PROJECTS = [
+  { id: 'portal',  name: 'Клиентский портал',   role: 'kc',   type: 'oneoff',  color: '#DC2626' },
+  { id: 'finplat', name: 'Фин платформа',       role: 'kc',   type: 'oneoff',  color: '#B45309' },
+  { id: 'sitekc',  name: 'Сайт КЦ (новый)',     role: 'kc',   type: 'oneoff',  color: '#DB2777' },
+  { id: 'sitekg',  name: 'Сайт Гуслей (новый)', role: 'kg',   type: 'oneoff',  color: '#2563EB' },
+  { id: 'content', name: 'Контент-завод',       role: null,   type: 'product', color: '#7C3AED' },
+];
+const getProject = (id) => PROJECTS.find(p => p.id === id);
+const effProject = (t) => t.project || null;
+
 // ===== Утилиты =====
 const newId = () => Math.random().toString(36).slice(2, 11);
 
@@ -346,6 +357,7 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
   const [role, setRole] = useState(effRole(task));
   const [quadrant, setQuadrant] = useState(effQuadrant(task));
   const [rock, setRock] = useState(!!task.rock);
+  const [project, setProject] = useState(effProject(task));
   const [editingTime, setEditingTime] = useState(false);
   const totalMins = Math.floor(taskTotal(task, now) / 60000);
   const [editH, setEditH] = useState(String(Math.floor(totalMins / 60)));
@@ -365,6 +377,7 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
     setRole(effRole(task));
     setQuadrant(effQuadrant(task));
     setRock(!!task.rock);
+    setProject(effProject(task));
   }, [task.id]);
 
   const startedAt = task.sessions.length > 0 ? Math.min(...task.sessions.map(s => s.start)) : null;
@@ -386,6 +399,7 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
       role,
       quadrant,
       rock,
+      project,
     };
     onUpdate(patch);
     onClose();
@@ -466,6 +480,15 @@ function TaskModal({ task, onClose, onUpdate, onComplete, onDelete, now }) {
           <div>
             {label('Большой камень')}
             <button onClick={() => setRock(!rock)} style={S.chip(rock, '#CA8A04')}>★ {rock ? 'да' : 'нет'}</button>
+          </div>
+          <div>
+            {label('Проект')}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={() => setProject(null)} style={S.chip(!project, '#64748B')}>—</button>
+              {PROJECTS.map(p => (
+                <button key={p.id} onClick={() => setProject(project === p.id ? null : p.id)} style={S.chip(project === p.id, p.color)}>{p.name}</button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -960,16 +983,21 @@ function KanbanColumn({ column, tasks, allTasks, onDrop, onTaskAction, now, onDr
 }
 
 // ===== Роль-доска (Дела по ролям) =====
-function RoleCard({ task, now, onOpen, onDragStart, onAction }) {
+function RoleCard({ task, now, onOpen, onDragStart, onAction, onCardDrop }) {
   const status = taskStatus(task);
   const total = taskTotal(task, now);
   const q = getQuadrant(effQuadrant(task));
   const role = getRole(effRole(task));
   const isRock = !!task.rock;
   const isDone = effLane(task) === 'done';
+  const [dragOver, setDragOver] = useState(false);
   return (
     <div draggable onDragStart={(e) => onDragStart(e, task.id)} className="card-hover"
+      onDragOver={onCardDrop ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); } : undefined}
+      onDragLeave={onCardDrop ? () => setDragOver(false) : undefined}
+      onDrop={onCardDrop ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); onCardDrop(task.id); } : undefined}
       style={{ ...S.card, padding: '7px 9px', marginBottom: 6, cursor: 'grab',
+        borderTop: dragOver ? '2px solid #0284C7' : '2px solid transparent',
         borderLeft: `3px solid ${role ? role.color : 'rgba(15,23,42,0.15)'}` }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
         <button onClick={() => onAction('rock', task.id)} title="Большой камень недели"
@@ -1010,6 +1038,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const [newTitle, setNewTitle] = useState('');
   const [newRole, setNewRole] = useState(ROLES[0].id);
   const [newQuadrant, setNewQuadrant] = useState(null);
+  const [newProject, setNewProject] = useState(null);
 
   const activePlan = plans ? plans.find(p => p.id === activePlanId) : null;
   const planWeek = (() => {
@@ -1038,51 +1067,44 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   tasks.forEach(t => { const ms = taskTotalInRange(t, weekRange.from, weekRange.to); if (ms > 0) { const rid = effRole(t); if (rid && weekRoleTime[rid] != null) weekRoleTime[rid] += ms; } });
   const maxWeekRole = Math.max(...ROLES.map(r => weekRoleTime[r.id]), 1);
 
-  const moveToLane = (id, lane) => {
-    if (lane === 'today') {
+  // Перемещает задачу в колонку (ctx = {lane} или {role}); если задан beforeId — ставит её ПЕРЕД этой карточкой (reorder вверх/вниз).
+  const applyDrop = (id, ctx, beforeId) => {
+    draggedId.current = null;
+    setDragOver(null);
+    if (!id || id === beforeId) return;
+    if (ctx.lane === 'today') {
       const t = tasks.find(x => x.id === id);
       if (t && effLane(t) !== 'today' && todayCount >= MAX_TODAY) {
         if (!window.confirm(`На сегодня уже ${MAX_TODAY} дела. По методу — не больше трёх. Всё равно добавить?`)) return;
       }
     }
     const nowTs = Date.now();
-    setTasks(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      // сохраняем роль и квадрант при перемещении между колонками
-      const patch = { ...t, role: t.role || effRole(t), quadrant: t.quadrant || effQuadrant(t) || null, column: lane };
-      if (lane === 'done') {
-        patch.sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s);
-        patch.completedAt = t.completedAt || nowTs;
-      } else if (t.column === 'done') {
-        patch.completedAt = null;
+    setTasks(prev => {
+      let updated = prev.map(t => {
+        if (t.id !== id) return t;
+        const patch = { ...t, quadrant: t.quadrant || effQuadrant(t) || null };
+        if (ctx.role !== undefined) {
+          const role = getRole(ctx.role);
+          patch.role = ctx.role;
+          patch.company = role ? (role.company || 'personal') : t.company;
+          patch.column = 'backlog';
+          if (t.column === 'done') patch.completedAt = null;
+        } else if (ctx.lane) {
+          patch.role = t.role || effRole(t);
+          patch.column = ctx.lane;
+          if (ctx.lane === 'done') { patch.sessions = t.sessions.map(s => s.end == null ? { ...s, end: nowTs } : s); patch.completedAt = t.completedAt || nowTs; }
+          else if (t.column === 'done') { patch.completedAt = null; }
+        }
+        return patch;
+      });
+      if (beforeId) {
+        const moved = updated.find(t => t.id === id);
+        updated = updated.filter(t => t.id !== id);
+        const idx = updated.findIndex(t => t.id === beforeId);
+        if (idx >= 0) updated.splice(idx, 0, moved); else updated.push(moved);
       }
-      return patch;
-    }));
-  };
-
-  const onDrop = (lane) => {
-    const id = draggedId.current;
-    draggedId.current = null;
-    setDragOver(null);
-    if (id) moveToLane(id, lane);
-  };
-
-  // перетащили в колонку роли: назначаем роль и кладём в пул «Все задачи»
-  const moveToRole = (id, roleId) => {
-    const role = getRole(roleId);
-    setTasks(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      const patch = { ...t, role: roleId, company: role ? (role.company || 'personal') : t.company, quadrant: t.quadrant || effQuadrant(t) || null, column: 'backlog' };
-      if (t.column === 'done') patch.completedAt = null;
-      return patch;
-    }));
-  };
-
-  const onDropRole = (roleId) => {
-    const id = draggedId.current;
-    draggedId.current = null;
-    setDragOver(null);
-    if (id) moveToRole(id, roleId);
+      return updated;
+    });
   };
 
   const action = (type, id, payload) => {
@@ -1120,7 +1142,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
     const lane = ctx.lane || 'backlog';
     setTasks(prev => [...prev, {
       id: newId(), title, column: lane, role: roleId, company: role ? (role.company || 'personal') : null,
-      dept: null, quadrant: newQuadrant, rock: false, sessions: [], createdAt: Date.now(),
+      dept: null, quadrant: newQuadrant, project: newProject, rock: false, sessions: [], createdAt: Date.now(),
       description: '', estimateMinutes: null, completedAt: null, result: '', descriptionFiles: [], resultFiles: [],
     }]);
     setNewTitle('');
@@ -1128,18 +1150,22 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
 
   const qKey = (t) => effQuadrant(t) || 99; // без квадранта — в конец
   const laneList = (lane) => {
+    const list = tasks.filter(t => effLane(t) === lane);
+    if (lane === 'today') return list; // «Сегодня» — только ручной порядок
     const roleIdx = (t) => { const i = ROLES.findIndex(r => r.id === effRole(t)); return i < 0 ? 99 : i; };
-    return tasks.filter(t => effLane(t) === lane).sort((a, b) => (qKey(a) - qKey(b)) || ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)) || (roleIdx(a) - roleIdx(b)));
+    return list.sort((a, b) => (qKey(a) - qKey(b)) || ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)) || (roleIdx(a) - roleIdx(b)));
   };
   const roleBacklog = (roleId) => tasks.filter(t => effLane(t) === 'backlog' && effRole(t) === roleId).sort((a, b) => (qKey(a) - qKey(b)) || ((b.rock ? 1 : 0) - (a.rock ? 1 : 0)));
   const noneBacklog = tasks.filter(t => effLane(t) === 'backlog' && effRole(t) == null);
   const doneList = tasks.filter(t => effLane(t) === 'done').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
-  const colBox = (colKey, headerNode, list, onDropFn, width, bg, addCtx) => (
+  const colBox = (colKey, headerNode, list, width, bg, ctx) => {
+   const addCtx = ctx && ctx.lane !== 'done' ? ctx : null;
+   return (
     <div key={colKey}
       onDragOver={(e) => { e.preventDefault(); setDragOver(colKey); }}
       onDragLeave={() => setDragOver(d => d === colKey ? null : d)}
-      onDrop={onDropFn}
+      onDrop={() => applyDrop(draggedId.current, ctx, null)}
       style={{ flexShrink: 0, width, borderRadius: 10, padding: 8,
         background: dragOver === colKey ? 'rgba(2,132,199,0.08)' : bg,
         border: `1px ${dragOver === colKey ? 'dashed' : 'solid'} ${dragOver === colKey ? '#0284C7' : 'rgba(15,23,42,0.08)'}` }}>
@@ -1154,6 +1180,10 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
               {ROLES.map(r => (<button key={r.id} onClick={() => setNewRole(r.id)} style={S.chip(newRole === r.id, r.color)}>{r.short}</button>))}
             </div>
           )}
+          <select value={newProject || ''} onChange={e => setNewProject(e.target.value || null)} style={{ ...S.input, padding: '5px 8px', fontSize: 12 }}>
+            <option value="">— проект —</option>
+            {PROJECTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {QUADRANTS.map(q => (<button key={q.id} onClick={() => setNewQuadrant(newQuadrant === q.id ? null : q.id)} style={S.chip(newQuadrant === q.id, q.color)} title={q.label}>{q.code}</button>))}
             <button onClick={() => submitAdd(addCtx)} className="btn-hover" style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 5, background: '#0284C7', color: '#FFFFFF' }}>Добавить</button>
@@ -1165,11 +1195,12 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
           style={{ width: '100%', padding: '5px', marginBottom: 8, fontSize: 11, color: '#64748B', borderRadius: 6, border: '1px dashed rgba(15,23,42,0.18)' }}>+ задача</button>
       ))}
       <div style={{ maxHeight: 'calc(100vh - 340px)', overflowY: 'auto', paddingRight: 2 }}>
-        {list.map(t => (<RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} />))}
+        {list.map(t => (<RoleCard key={t.id} task={t} now={now} onOpen={setOpenTaskId} onDragStart={onDragStart} onAction={action} onCardDrop={(targetId) => applyDrop(draggedId.current, ctx, targetId)} />))}
         {list.length === 0 && <div style={{ fontSize: 11, color: '#CBD5E1', textAlign: 'center', padding: '16px 0' }}>перетащи сюда</div>}
       </div>
     </div>
-  );
+   );
+  };
 
   const laneHeader = (icon, title, count, accent) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '0 2px' }}>
@@ -1254,12 +1285,12 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
       </div>
 
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
-        {colBox('today', laneHeader('☀', 'Сегодня', laneList('today').length, true), laneList('today'), () => onDrop('today'), 290, 'rgba(2,132,199,0.05)', { lane: 'today' })}
-        {colBox('week', laneHeader('📅', 'Неделя', laneList('week').length, false), laneList('week'), () => onDrop('week'), 290, 'rgba(15,23,42,0.02)', { lane: 'week' })}
+        {colBox('today', laneHeader('☀', 'Сегодня', laneList('today').length, true), laneList('today'), 290, 'rgba(2,132,199,0.05)', { lane: 'today' })}
+        {colBox('week', laneHeader('📅', 'Неделя', laneList('week').length, false), laneList('week'), 290, 'rgba(15,23,42,0.02)', { lane: 'week' })}
         {divider('ПУЛ ПО РОЛЯМ')}
-        {ROLES.map(role => colBox('role:' + role.id, roleHeader(role), roleBacklog(role.id), () => onDropRole(role.id), 240, `${role.color}0D`, { role: role.id }))}
-        {noneBacklog.length > 0 && colBox('none', laneHeader('?', 'Без роли', noneBacklog.length, false), noneBacklog, () => onDrop('backlog'), 240, 'rgba(219,39,119,0.06)')}
-        {showDone && (<React.Fragment>{divider('СДЕЛАНО')}{colBox('done', laneHeader('✓', 'Сделано', doneList.length, false), doneList, () => onDrop('done'), 260, 'rgba(15,23,42,0.02)')}</React.Fragment>)}
+        {ROLES.map(role => colBox('role:' + role.id, roleHeader(role), roleBacklog(role.id), 240, `${role.color}0D`, { role: role.id }))}
+        {noneBacklog.length > 0 && colBox('none', laneHeader('?', 'Без роли', noneBacklog.length, false), noneBacklog, 240, 'rgba(219,39,119,0.06)', { lane: 'backlog' })}
+        {showDone && (<React.Fragment>{divider('СДЕЛАНО')}{colBox('done', laneHeader('✓', 'Сделано', doneList.length, false), doneList, 260, 'rgba(15,23,42,0.02)', { lane: 'done' })}</React.Fragment>)}
       </div>
 
       {openTaskId && tasks.find(t => t.id === openTaskId) && (
@@ -2933,6 +2964,87 @@ function ReportsView({ tasks }) {
   );
 }
 
+// ===== Проекты (прогресс по разработкам) =====
+function ProjectsView({ tasks, now }) {
+  const wr = (() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    const dow = d.getDay(); const diff = dow === 0 ? -6 : 1 - dow;
+    d.setDate(d.getDate() + diff);
+    const from = d.getTime();
+    const end = new Date(d); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999);
+    return { from, to: end.getTime() };
+  })();
+  const stat = (pid) => {
+    const list = tasks.filter(t => effProject(t) === pid);
+    const total = list.length;
+    const done = list.filter(t => effLane(t) === 'done').length;
+    const weekMs = list.reduce((s, t) => s + taskTotalInRange(t, wr.from, wr.to), 0);
+    const totalMs = list.reduce((s, t) => s + taskTotal(t, now), 0);
+    const active = list.filter(t => effLane(t) !== 'done').length;
+    return { total, done, active, weekMs, totalMs, pct: total > 0 ? done / total * 100 : 0 };
+  };
+  const maxWeek = Math.max(...PROJECTS.map(p => stat(p.id).weekMs), 1);
+  const untaggedActive = tasks.filter(t => !effProject(t) && effLane(t) !== 'done').length;
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: '#64748B', marginBottom: 14 }}>
+        Прогресс по конечным проектам — чтобы не было перекоса в одну сторону. Тег проекта ставится на задаче.
+      </div>
+
+      <div style={{ ...S.card, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', marginBottom: 12 }}>Время за неделю по проектам</div>
+        {PROJECTS.map(p => {
+          const s = stat(p.id);
+          return <RepBar key={p.id} label={p.name} color={p.color} value={s.weekMs} max={maxWeek} sub={`${fmtHours(s.weekMs)} ч`} />;
+        })}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        {PROJECTS.map(p => {
+          const s = stat(p.id);
+          const role = getRole(p.role);
+          return (
+            <div key={p.id} style={{ ...S.card, borderLeft: `4px solid ${p.color}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{p.name}</span>
+                <span style={S.badge(p.type === 'product' ? '#7C3AED' : '#0284C7')}>{p.type === 'product' ? 'продукт' : 'разовый'}</span>
+                {role && <span style={S.badge(role.color)}>{role.short}</span>}
+              </div>
+              {p.type === 'oneoff' ? (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#334155', marginBottom: 4 }}>
+                    <span>Готово задач</span>
+                    <span className="mono" style={{ fontWeight: 600, color: s.pct >= 100 ? '#059669' : p.color }}>{s.done} / {s.total} · {Math.round(s.pct)}%</span>
+                  </div>
+                  <div style={{ height: 12, background: '#E2E8F0', borderRadius: 6 }}>
+                    <div style={{ width: `${s.pct}%`, height: '100%', background: s.pct >= 100 ? '#059669' : p.color, borderRadius: 6, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#475569' }}>
+                  Продукт (постоянный) · активных задач: <b style={{ color: '#0F172A' }}>{s.active}</b>
+                </div>
+              )}
+              <div className="mono" style={{ fontSize: 11, color: '#64748B', marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <span>за неделю: <b style={{ color: '#0284C7' }}>{fmtHours(s.weekMs)} ч</b></span>
+                <span>всего: <b style={{ color: '#0F172A' }}>{fmtHours(s.totalMs)} ч</b></span>
+                <span>в работе: {s.active}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {untaggedActive > 0 && (
+        <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 12 }}>
+          Без проекта: {untaggedActive} активных задач (проставь тег проекта в задаче, чтобы учитывались).
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===== Синхронизация: слияние по элементам (merge) =====
 
 // Сравнение метки времени сервера без учёта формата (Z vs +00:00)
@@ -3582,6 +3694,7 @@ function App() {
         <div style={S.tabs}>
           <button onClick={() => setTab('kanban')} style={S.tab(tab === 'kanban')}>Дела по ролям</button>
           <button onClick={() => setTab('reports')} style={S.tab(tab === 'reports')}>Отчёты</button>
+          <button onClick={() => setTab('projects')} style={S.tab(tab === 'projects')}>Проекты</button>
           <button onClick={() => setTab('weekplan')} style={S.tab(tab === 'weekplan')}>12 недель</button>
           <button onClick={() => setTab('mindmap')} style={S.tab(tab === 'mindmap')}>Mind Map</button>
           <button onClick={() => setTab('stream')} style={S.tab(tab === 'stream')}>Стримы</button>
@@ -3617,6 +3730,9 @@ function App() {
         )}
         {tab === 'reports' && (
           <ReportsView tasks={tasks} />
+        )}
+        {tab === 'projects' && (
+          <ProjectsView tasks={tasks} now={now} />
         )}
         {tab === 'weekplan' && (
           <WeekPlanView plans={plans} activePlanId={activePlanId} setPlans={setPlans} setActivePlanId={setActivePlanId} tasks={tasks} />
