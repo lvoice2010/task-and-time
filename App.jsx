@@ -3434,6 +3434,20 @@ function StreamPlanView() {
 }
 
 
+// ===== Локальная авто-копия (страховка от затирания облака) =====
+const LOCAL_BACKUP_KEY = 'plan-local-backup-v1';
+const bkStripFiles = (tasks) => (tasks || []).map(t => ({
+  ...t,
+  descriptionFiles: (t.descriptionFiles || []).map(f => ({ ...f, dataUrl: undefined })),
+  resultFiles: (t.resultFiles || []).map(f => ({ ...f, dataUrl: undefined })),
+}));
+const saveLocalBackup = (tasks, plans, activePlanId) => {
+  const payload = { ts: Date.now(), tasks, plans, activePlanId };
+  try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(payload)); return; } catch (e) {}
+  try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify({ ...payload, tasks: bkStripFiles(tasks), _light: true })); } catch (e) {}
+};
+const loadLocalBackup = () => { try { return JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY)); } catch (e) { return null; } };
+
 function App() {
   const [tab, setTab] = useState('kanban');
   const [tasks, setTasks] = useState([]);
@@ -3445,6 +3459,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [syncStatus, setSyncStatus] = useState('idle'); // idle | saving | saved | error
+  const [dataWarning, setDataWarning] = useState(null); // {cloud, local, ts} — подозрение на затирание
   const lastSyncedAtRef = useRef(null);   // server updated_at we are in sync with
   const savedSnapshotRef = useRef(null);  // syncContentSig of last saved/loaded content (для «менялось ли»)
   const savedBlobRef = useRef(null);      // последний сохранённый блоб {tasks,plans,activePlanId,deleted} с метками
@@ -3484,6 +3499,15 @@ function App() {
           // помечаем как «чисто», чтобы не перезаливать только что загруженное
           savedBlobRef.current = blob;
           savedSnapshotRef.current = syncContentSig(blob.tasks, blob.plans, blob.activePlanId);
+          // защита: если в облаке заметно меньше задач, чем в локальной копии — подозрение на затирание
+          const prevLocal = loadLocalBackup();
+          const cloudCount = blob.tasks.length;
+          if (prevLocal && Array.isArray(prevLocal.tasks) && prevLocal.tasks.length >= cloudCount + 10) {
+            setDataWarning({ cloud: cloudCount, local: prevLocal.tasks.length, ts: prevLocal.ts });
+            // НЕ перезаписываем локальную копию меньшим облаком — сохраняем страховку
+          } else {
+            saveLocalBackup(blob.tasks, blob.plans, blob.activePlanId);
+          }
         } else {
           // Облако пустое — мигрируем что есть локально (одноразово)
           let localTasks = [];
@@ -3551,6 +3575,7 @@ function App() {
         lastSyncedAtRef.current = newAt;
         savedBlobRef.current = toSave;
         savedSnapshotRef.current = syncContentSig(toSave.tasks, toSave.plans, toSave.activePlanId);
+        saveLocalBackup(toSave.tasks, toSave.plans, toSave.activePlanId); // страховочная локальная копия
         if (merged) { setTasks(toSave.tasks); setPlans(toSave.plans); setActivePlanId(toSave.activePlanId); }
         setSyncStatus('saved');
         setTimeout(() => setSyncStatus('idle'), 2000);
@@ -3629,6 +3654,16 @@ function App() {
     a.download = `plan-2026-backup-${ts}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const restoreFromLocal = () => {
+    const b = loadLocalBackup();
+    if (!b || !Array.isArray(b.tasks)) { alert('Локальная копия не найдена.'); return; }
+    if (!window.confirm(`Восстановить ${b.tasks.length} задач из локальной копии? Недостающие вернутся, текущие останутся.`)) return;
+    setTasks(b.tasks);
+    setPlans(Array.isArray(b.plans) ? b.plans : []);
+    setActivePlanId(b.activePlanId || null);
+    setDataWarning(null);
   };
 
   const importInputRef = useRef(null);
@@ -3724,6 +3759,15 @@ function App() {
           <button onClick={reset} style={S.resetBtn} className="btn-hover">Сбросить</button>
         </div>
       </div>
+      {dataWarning && (
+        <div style={{ margin: '0 20px', marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#991B1B', fontWeight: 500 }}>
+            ⚠ В облаке {dataWarning.cloud} задач, а в локальной копии — {dataWarning.local}. Возможно, данные перезаписаны другой вкладкой.
+          </span>
+          <button onClick={restoreFromLocal} className="btn-hover" style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, background: '#DC2626', color: '#FFFFFF' }}>Восстановить из локальной копии</button>
+          <button onClick={() => setDataWarning(null)} className="btn-hover" style={{ padding: '6px 12px', fontSize: 12, borderRadius: 6, color: '#991B1B', border: '1px solid #FCA5A5' }}>Скрыть</button>
+        </div>
+      )}
       <div style={S.container}>
         {tab === 'kanban' && (
           <RoleBoardView tasks={tasks} setTasks={setTasks} now={now} plans={plans} activePlanId={activePlanId} />
