@@ -1032,7 +1032,7 @@ function RoleBoardView({ tasks, setTasks, now, plans, activePlanId }) {
   const draggedId = useRef(null);
   const [openTaskId, setOpenTaskId] = useState(null);
   const [showDone, setShowDone] = useState(false);
-  const [showBalance, setShowBalance] = useState(true);
+  const [showBalance, setShowBalance] = useState(false);
   const [dragOver, setDragOver] = useState(null); // `${roleId}:${lane}`
   const [addCol, setAddCol] = useState(null); // colKey с открытой формой добавления
   const [newTitle, setNewTitle] = useState('');
