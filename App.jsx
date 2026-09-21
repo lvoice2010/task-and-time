@@ -1848,10 +1848,7 @@ function TrackingTable({ plan, onToggleCell, tasks, onUpdateGoal }) {
                 <td style={{ ...stickyStyle, background: goalBg, left: 0, padding: 6, borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, textAlign: 'center', fontWeight: 700, color: '#334155' }}>
 
                 </td>
-                <td style={{ ...stickyStyle, background: goalBg, left: 34, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#0F172A', fontSize: 12, fontFamily: 'DM Sans' }}>
-
-                </td>
-                <td style={{ ...stickyStyle, left: 254, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 12, fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={tactic.title}>
+                <td colSpan={2} style={{ ...stickyStyle, background: goalBg, left: 34, padding: '6px 10px', borderBottom: '1px solid rgba(15,23,42,0.05)', borderTop: topBorder, color: '#334155', fontSize: 12, fontFamily: 'DM Sans', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={tactic.title}>
                   {tactic.title}
                   <span style={{ fontSize: 9, color: '#94A3B8', marginLeft: 4 }}>
                     {tactic.frequency === 'weekday' ? '(5/7)' : '(7/7)'}
